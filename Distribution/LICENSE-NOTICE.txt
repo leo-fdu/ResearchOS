@@ -1,0 +1,30 @@
+Research OS shared edition 2.0.17
+
+The Research OS application source distributed in this edition is provided under
+GNU Affero General Public License version 3. The complete license text is in
+AGPL-3.0.txt. Existing third-party copyright and license notices are retained;
+those components remain available under their original terms.
+
+The accompanying ResearchOS2-source.zip contains the application source, static
+resources and scripts to rebuild this edition. PyMuPDF and PyMuPDF4LLM are
+unmodified and accompanied by their corresponding source distributions in
+Dependency sources. The matching MuPDF source archive is supplied separately.
+
+Components and provenance:
+- PDFChat-derived native reader and chat UI: MIT; see PDFChat-LICENSE in source.
+- PaperMind-derived organization modules: original source included under service/papermind.
+- PyMuPDF 1.27.2.3: AGPL-3.0; https://pypi.org/project/PyMuPDF/1.27.2.3/
+- PyMuPDF4LLM 0.3.4: AGPL-3.0; https://pypi.org/project/pymupdf4llm/0.3.4/
+- tabulate 0.10.0: MIT; license retained in Python site-packages.
+- CPython 3.12.15 standalone build 20261013 (Astral python-build-standalone):
+  PSF and bundled-library notices retained in the Python runtime.
+  https://github.com/astral-sh/python-build-standalone/releases/tag/20261013
+- Marked, DOMPurify and KaTeX: licenses retained beside bundled web assets.
+- Apple system frameworks: supplied by macOS, not redistributed in this package.
+- Codex is NOT bundled. On explicit request, setup downloads OpenAI's unmodified
+  0.163.0 official package, checks its pinned SHA-256, preserves its package layout
+  and installs it in the current user's application data directory.
+  https://github.com/openai/codex/releases/tag/rust-v0.163.0
+
+No warranty is provided. No signing identity, login session, authentication token,
+private research file or workspace database is part of this distribution.

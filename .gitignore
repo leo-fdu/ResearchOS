@@ -1,0 +1,11 @@
+.DS_Store
+.build/
+.build-work/
+__pycache__/
+*.pyc
+*.app/
+*.dmg
+*.sqlite3*
+*.log
+.env
+.venv/

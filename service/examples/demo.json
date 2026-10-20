@@ -1,0 +1,1421 @@
+{
+  "format": "researchos",
+  "version": 1,
+  "data": {
+    "projects": [
+      {
+        "id": "pep",
+        "created_at": "2026-10-11T14:01:37.163965+00:00",
+        "name": "蛋白–多肽亲和力",
+        "question": "界面表征能否带来跨靶点的泛化提升？",
+        "description": "示例项目 · 所有实验数字均为演示数据，不代表真实研究结果。围绕接触信息、pooling 与数据划分建立可追溯的实验链。",
+        "status": "active",
+        "color": "#d76743",
+        "repo_path": ""
+      },
+      {
+        "id": "mol",
+        "created_at": "2026-10-12T14:01:37.163965+00:00",
+        "name": "分子生成与评估",
+        "question": "奖励提升是否来自分子尺寸的捷径？",
+        "description": "示例项目 · 用匹配分布对照区分打分提升与真实分子质量。",
+        "status": "active",
+        "color": "#497d70",
+        "repo_path": ""
+      },
+      {
+        "id": "repr",
+        "created_at": "2026-10-13T14:01:37.163965+00:00",
+        "name": "分子表示对齐",
+        "question": "序列表征与分子图表征共享多少结构信息？",
+        "description": "示例项目 · 天然与非天然残基表示的探索。",
+        "status": "paused",
+        "color": "#6674ad",
+        "repo_path": ""
+      }
+    ],
+    "datasets": [
+      {
+        "id": "ds-pep",
+        "created_at": "2026-10-11T14:01:37.163965+00:00",
+        "project_id": "pep",
+        "name": "Peptide affinity benchmark",
+        "version": "demo-v1",
+        "split": "target-heldout / fold-0",
+        "description": "演示数据版本；无真实数据文件。",
+        "fingerprint": "demo-only",
+        "path": ""
+      },
+      {
+        "id": "ds-mol",
+        "created_at": "2026-10-12T14:01:37.163965+00:00",
+        "project_id": "mol",
+        "name": "Matched molecule set",
+        "version": "demo-v1",
+        "split": "scaffold-test",
+        "description": "演示数据；无真实分子文件。"
+      }
+    ],
+    "hypotheses": [
+      {
+        "id": "h-contact",
+        "created_at": "2026-10-12T14:01:37.163965+00:00",
+        "project_id": "pep",
+        "title": "接触门控能改善界面信息聚合",
+        "rationale": "全局平均可能稀释少量界面残基的贡献。需要控制参数量与接触数量的影响。",
+        "prediction": "在相同划分和 seed 下，接触门控降低 RMSE。",
+        "criterion": "5 个相同 seed；报告配对差值及 95% CI；同时检查接触数量的相关性。",
+        "status": "testing"
+      },
+      {
+        "id": "h-pool",
+        "created_at": "2026-10-13T14:01:37.163965+00:00",
+        "project_id": "pep",
+        "title": "性能增益可能来自接触数量捷径",
+        "rationale": "接触数量与多肽长度、界面尺寸可能相关。",
+        "prediction": "打乱接触权重后若性能仍保留，说明需要进一步排查捷径。",
+        "criterion": "参数量匹配的随机门控对照；按长度分层评价。",
+        "status": "proposed"
+      },
+      {
+        "id": "h-size",
+        "created_at": "2026-10-13T14:01:37.163965+00:00",
+        "project_id": "mol",
+        "title": "奖励增长与分子尺寸存在混杂",
+        "rationale": "尺寸相关的打分项可能推动较重分子的生成。",
+        "prediction": "匹配重原子数分布后，奖励增益缩小。",
+        "criterion": "同靶点、匹配重原子数；报告原始打分与有效率。",
+        "status": "testing"
+      }
+    ],
+    "experiments": [
+      {
+        "id": "exp-base",
+        "created_at": "2026-10-12T14:01:37.163965+00:00",
+        "project_id": "pep",
+        "hypothesis_id": "h-contact",
+        "title": "Mean pooling · baseline",
+        "description": "演示实验：用于展示匹配 seed 比较、配置差异和证据链。",
+        "status": "completed",
+        "dataset_id": "ds-pep",
+        "split": "target-heldout / fold-0",
+        "metric": "RMSE",
+        "direction": "min",
+        "config": {
+          "pooling": "mean",
+          "hidden_dim": 256,
+          "lr": 0.0001,
+          "epochs": 100
+        },
+        "git": {
+          "commit": "demo-commit-not-a-real-revision",
+          "branch": "demo",
+          "dirty": false,
+          "captured_at": "2026-10-17T14:01:37.163965+00:00",
+          "path": "示例，无真实仓库"
+        },
+        "tags": [
+          "demo",
+          "pooling"
+        ]
+      },
+      {
+        "id": "exp-gate",
+        "created_at": "2026-10-14T14:01:37.163965+00:00",
+        "project_id": "pep",
+        "hypothesis_id": "h-contact",
+        "title": "Contact-gated pooling",
+        "description": "演示实验：用于展示匹配 seed 比较、配置差异和证据链。",
+        "status": "completed",
+        "dataset_id": "ds-pep",
+        "split": "target-heldout / fold-0",
+        "metric": "RMSE",
+        "direction": "min",
+        "config": {
+          "pooling": "contact_gate",
+          "hidden_dim": 256,
+          "lr": 0.0001,
+          "epochs": 100
+        },
+        "git": {
+          "commit": "demo-commit-not-a-real-revision",
+          "branch": "demo",
+          "dirty": false,
+          "captured_at": "2026-10-17T14:01:37.163965+00:00",
+          "path": "示例，无真实仓库"
+        },
+        "tags": [
+          "demo",
+          "pooling"
+        ]
+      },
+      {
+        "id": "exp-shuffle",
+        "created_at": "2026-10-16T14:01:37.163965+00:00",
+        "project_id": "pep",
+        "hypothesis_id": "h-pool",
+        "title": "Shuffled contact control",
+        "description": "演示实验：用于展示匹配 seed 比较、配置差异和证据链。",
+        "status": "running",
+        "dataset_id": "ds-pep",
+        "split": "target-heldout / fold-0",
+        "metric": "RMSE",
+        "direction": "min",
+        "config": {
+          "pooling": "shuffled_gate",
+          "hidden_dim": 256,
+          "lr": 0.0001,
+          "epochs": 100
+        },
+        "git": {
+          "commit": "demo-commit-not-a-real-revision",
+          "branch": "demo",
+          "dirty": false,
+          "captured_at": "2026-10-17T14:01:37.163965+00:00",
+          "path": "示例，无真实仓库"
+        },
+        "tags": [
+          "demo",
+          "pooling"
+        ]
+      },
+      {
+        "id": "exp-size",
+        "created_at": "2026-10-15T14:01:37.163965+00:00",
+        "project_id": "mol",
+        "hypothesis_id": "h-size",
+        "title": "Size-matched evaluation",
+        "description": "演示实验，等待导入实际结果。",
+        "status": "planned",
+        "dataset_id": "ds-mol",
+        "split": "scaffold-test",
+        "metric": "validity",
+        "direction": "max",
+        "config": {
+          "match_by": "heavy_atoms"
+        },
+        "git": {},
+        "tags": [
+          "demo",
+          "control"
+        ]
+      }
+    ],
+    "runs": [
+      {
+        "id": "exp-base-11",
+        "created_at": "2026-10-15T14:01:37.163965+00:00",
+        "project_id": "pep",
+        "experiment_id": "exp-base",
+        "seed": 11,
+        "status": "completed",
+        "metrics": {
+          "RMSE": 2.71,
+          "Pearson": 0.384
+        },
+        "history": [
+          {
+            "step": 0,
+            "metrics": {
+              "train_loss": 5.5,
+              "val_RMSE": 4.41
+            }
+          },
+          {
+            "step": 10,
+            "metrics": {
+              "train_loss": 2.763,
+              "val_RMSE": 3.277
+            }
+          },
+          {
+            "step": 20,
+            "metrics": {
+              "train_loss": 1.914,
+              "val_RMSE": 3.05
+            }
+          },
+          {
+            "step": 30,
+            "metrics": {
+              "train_loss": 1.5,
+              "val_RMSE": 2.953
+            }
+          },
+          {
+            "step": 40,
+            "metrics": {
+              "train_loss": 1.255,
+              "val_RMSE": 2.899
+            }
+          },
+          {
+            "step": 50,
+            "metrics": {
+              "train_loss": 1.093,
+              "val_RMSE": 2.865
+            }
+          },
+          {
+            "step": 60,
+            "metrics": {
+              "train_loss": 0.978,
+              "val_RMSE": 2.841
+            }
+          },
+          {
+            "step": 70,
+            "metrics": {
+              "train_loss": 0.892,
+              "val_RMSE": 2.823
+            }
+          },
+          {
+            "step": 80,
+            "metrics": {
+              "train_loss": 0.826,
+              "val_RMSE": 2.81
+            }
+          },
+          {
+            "step": 90,
+            "metrics": {
+              "train_loss": 0.773,
+              "val_RMSE": 2.799
+            }
+          },
+          {
+            "step": 100,
+            "metrics": {
+              "train_loss": 0.729,
+              "val_RMSE": 2.791
+            }
+          }
+        ],
+        "notes": "演示数值，仅用于展示。",
+        "artifact_path": ""
+      },
+      {
+        "id": "exp-base-22",
+        "created_at": "2026-10-15T14:01:37.163965+00:00",
+        "project_id": "pep",
+        "experiment_id": "exp-base",
+        "seed": 22,
+        "status": "completed",
+        "metrics": {
+          "RMSE": 2.57,
+          "Pearson": 0.405
+        },
+        "history": [
+          {
+            "step": 0,
+            "metrics": {
+              "train_loss": 5.53,
+              "val_RMSE": 4.27
+            }
+          },
+          {
+            "step": 10,
+            "metrics": {
+              "train_loss": 2.793,
+              "val_RMSE": 3.137
+            }
+          },
+          {
+            "step": 20,
+            "metrics": {
+              "train_loss": 1.944,
+              "val_RMSE": 2.91
+            }
+          },
+          {
+            "step": 30,
+            "metrics": {
+              "train_loss": 1.53,
+              "val_RMSE": 2.813
+            }
+          },
+          {
+            "step": 40,
+            "metrics": {
+              "train_loss": 1.285,
+              "val_RMSE": 2.759
+            }
+          },
+          {
+            "step": 50,
+            "metrics": {
+              "train_loss": 1.123,
+              "val_RMSE": 2.725
+            }
+          },
+          {
+            "step": 60,
+            "metrics": {
+              "train_loss": 1.008,
+              "val_RMSE": 2.701
+            }
+          },
+          {
+            "step": 70,
+            "metrics": {
+              "train_loss": 0.922,
+              "val_RMSE": 2.683
+            }
+          },
+          {
+            "step": 80,
+            "metrics": {
+              "train_loss": 0.856,
+              "val_RMSE": 2.67
+            }
+          },
+          {
+            "step": 90,
+            "metrics": {
+              "train_loss": 0.803,
+              "val_RMSE": 2.659
+            }
+          },
+          {
+            "step": 100,
+            "metrics": {
+              "train_loss": 0.759,
+              "val_RMSE": 2.651
+            }
+          }
+        ],
+        "notes": "演示数值，仅用于展示。",
+        "artifact_path": ""
+      },
+      {
+        "id": "exp-base-33",
+        "created_at": "2026-10-15T14:01:37.163965+00:00",
+        "project_id": "pep",
+        "experiment_id": "exp-base",
+        "seed": 33,
+        "status": "completed",
+        "metrics": {
+          "RMSE": 2.65,
+          "Pearson": 0.393
+        },
+        "history": [
+          {
+            "step": 0,
+            "metrics": {
+              "train_loss": 5.56,
+              "val_RMSE": 4.35
+            }
+          },
+          {
+            "step": 10,
+            "metrics": {
+              "train_loss": 2.823,
+              "val_RMSE": 3.217
+            }
+          },
+          {
+            "step": 20,
+            "metrics": {
+              "train_loss": 1.974,
+              "val_RMSE": 2.99
+            }
+          },
+          {
+            "step": 30,
+            "metrics": {
+              "train_loss": 1.56,
+              "val_RMSE": 2.893
+            }
+          },
+          {
+            "step": 40,
+            "metrics": {
+              "train_loss": 1.315,
+              "val_RMSE": 2.839
+            }
+          },
+          {
+            "step": 50,
+            "metrics": {
+              "train_loss": 1.153,
+              "val_RMSE": 2.805
+            }
+          },
+          {
+            "step": 60,
+            "metrics": {
+              "train_loss": 1.038,
+              "val_RMSE": 2.781
+            }
+          },
+          {
+            "step": 70,
+            "metrics": {
+              "train_loss": 0.952,
+              "val_RMSE": 2.763
+            }
+          },
+          {
+            "step": 80,
+            "metrics": {
+              "train_loss": 0.886,
+              "val_RMSE": 2.75
+            }
+          },
+          {
+            "step": 90,
+            "metrics": {
+              "train_loss": 0.833,
+              "val_RMSE": 2.739
+            }
+          },
+          {
+            "step": 100,
+            "metrics": {
+              "train_loss": 0.789,
+              "val_RMSE": 2.731
+            }
+          }
+        ],
+        "notes": "演示数值，仅用于展示。",
+        "artifact_path": ""
+      },
+      {
+        "id": "exp-base-44",
+        "created_at": "2026-10-15T14:01:37.163965+00:00",
+        "project_id": "pep",
+        "experiment_id": "exp-base",
+        "seed": 44,
+        "status": "completed",
+        "metrics": {
+          "RMSE": 2.48,
+          "Pearson": 0.418
+        },
+        "history": [
+          {
+            "step": 0,
+            "metrics": {
+              "train_loss": 5.59,
+              "val_RMSE": 4.18
+            }
+          },
+          {
+            "step": 10,
+            "metrics": {
+              "train_loss": 2.853,
+              "val_RMSE": 3.047
+            }
+          },
+          {
+            "step": 20,
+            "metrics": {
+              "train_loss": 2.004,
+              "val_RMSE": 2.82
+            }
+          },
+          {
+            "step": 30,
+            "metrics": {
+              "train_loss": 1.59,
+              "val_RMSE": 2.723
+            }
+          },
+          {
+            "step": 40,
+            "metrics": {
+              "train_loss": 1.345,
+              "val_RMSE": 2.669
+            }
+          },
+          {
+            "step": 50,
+            "metrics": {
+              "train_loss": 1.183,
+              "val_RMSE": 2.635
+            }
+          },
+          {
+            "step": 60,
+            "metrics": {
+              "train_loss": 1.068,
+              "val_RMSE": 2.611
+            }
+          },
+          {
+            "step": 70,
+            "metrics": {
+              "train_loss": 0.982,
+              "val_RMSE": 2.593
+            }
+          },
+          {
+            "step": 80,
+            "metrics": {
+              "train_loss": 0.916,
+              "val_RMSE": 2.58
+            }
+          },
+          {
+            "step": 90,
+            "metrics": {
+              "train_loss": 0.863,
+              "val_RMSE": 2.569
+            }
+          },
+          {
+            "step": 100,
+            "metrics": {
+              "train_loss": 0.819,
+              "val_RMSE": 2.561
+            }
+          }
+        ],
+        "notes": "演示数值，仅用于展示。",
+        "artifact_path": ""
+      },
+      {
+        "id": "exp-base-55",
+        "created_at": "2026-10-15T14:01:37.163965+00:00",
+        "project_id": "pep",
+        "experiment_id": "exp-base",
+        "seed": 55,
+        "status": "completed",
+        "metrics": {
+          "RMSE": 2.6,
+          "Pearson": 0.4
+        },
+        "history": [
+          {
+            "step": 0,
+            "metrics": {
+              "train_loss": 5.62,
+              "val_RMSE": 4.3
+            }
+          },
+          {
+            "step": 10,
+            "metrics": {
+              "train_loss": 2.883,
+              "val_RMSE": 3.167
+            }
+          },
+          {
+            "step": 20,
+            "metrics": {
+              "train_loss": 2.034,
+              "val_RMSE": 2.94
+            }
+          },
+          {
+            "step": 30,
+            "metrics": {
+              "train_loss": 1.62,
+              "val_RMSE": 2.843
+            }
+          },
+          {
+            "step": 40,
+            "metrics": {
+              "train_loss": 1.375,
+              "val_RMSE": 2.789
+            }
+          },
+          {
+            "step": 50,
+            "metrics": {
+              "train_loss": 1.213,
+              "val_RMSE": 2.755
+            }
+          },
+          {
+            "step": 60,
+            "metrics": {
+              "train_loss": 1.098,
+              "val_RMSE": 2.731
+            }
+          },
+          {
+            "step": 70,
+            "metrics": {
+              "train_loss": 1.012,
+              "val_RMSE": 2.713
+            }
+          },
+          {
+            "step": 80,
+            "metrics": {
+              "train_loss": 0.946,
+              "val_RMSE": 2.7
+            }
+          },
+          {
+            "step": 90,
+            "metrics": {
+              "train_loss": 0.893,
+              "val_RMSE": 2.689
+            }
+          },
+          {
+            "step": 100,
+            "metrics": {
+              "train_loss": 0.849,
+              "val_RMSE": 2.681
+            }
+          }
+        ],
+        "notes": "演示数值，仅用于展示。",
+        "artifact_path": ""
+      },
+      {
+        "id": "exp-gate-11",
+        "created_at": "2026-10-16T14:01:37.163965+00:00",
+        "project_id": "pep",
+        "experiment_id": "exp-gate",
+        "seed": 11,
+        "status": "completed",
+        "metrics": {
+          "RMSE": 2.61,
+          "Pearson": 0.399
+        },
+        "history": [
+          {
+            "step": 0,
+            "metrics": {
+              "train_loss": 5.5,
+              "val_RMSE": 4.31
+            }
+          },
+          {
+            "step": 10,
+            "metrics": {
+              "train_loss": 2.763,
+              "val_RMSE": 3.177
+            }
+          },
+          {
+            "step": 20,
+            "metrics": {
+              "train_loss": 1.914,
+              "val_RMSE": 2.95
+            }
+          },
+          {
+            "step": 30,
+            "metrics": {
+              "train_loss": 1.5,
+              "val_RMSE": 2.853
+            }
+          },
+          {
+            "step": 40,
+            "metrics": {
+              "train_loss": 1.255,
+              "val_RMSE": 2.799
+            }
+          },
+          {
+            "step": 50,
+            "metrics": {
+              "train_loss": 1.093,
+              "val_RMSE": 2.765
+            }
+          },
+          {
+            "step": 60,
+            "metrics": {
+              "train_loss": 0.978,
+              "val_RMSE": 2.741
+            }
+          },
+          {
+            "step": 70,
+            "metrics": {
+              "train_loss": 0.892,
+              "val_RMSE": 2.723
+            }
+          },
+          {
+            "step": 80,
+            "metrics": {
+              "train_loss": 0.826,
+              "val_RMSE": 2.71
+            }
+          },
+          {
+            "step": 90,
+            "metrics": {
+              "train_loss": 0.773,
+              "val_RMSE": 2.699
+            }
+          },
+          {
+            "step": 100,
+            "metrics": {
+              "train_loss": 0.729,
+              "val_RMSE": 2.691
+            }
+          }
+        ],
+        "notes": "演示数值，仅用于展示。",
+        "artifact_path": ""
+      },
+      {
+        "id": "exp-gate-22",
+        "created_at": "2026-10-16T14:01:37.163965+00:00",
+        "project_id": "pep",
+        "experiment_id": "exp-gate",
+        "seed": 22,
+        "status": "completed",
+        "metrics": {
+          "RMSE": 2.49,
+          "Pearson": 0.416
+        },
+        "history": [
+          {
+            "step": 0,
+            "metrics": {
+              "train_loss": 5.53,
+              "val_RMSE": 4.19
+            }
+          },
+          {
+            "step": 10,
+            "metrics": {
+              "train_loss": 2.793,
+              "val_RMSE": 3.057
+            }
+          },
+          {
+            "step": 20,
+            "metrics": {
+              "train_loss": 1.944,
+              "val_RMSE": 2.83
+            }
+          },
+          {
+            "step": 30,
+            "metrics": {
+              "train_loss": 1.53,
+              "val_RMSE": 2.733
+            }
+          },
+          {
+            "step": 40,
+            "metrics": {
+              "train_loss": 1.285,
+              "val_RMSE": 2.679
+            }
+          },
+          {
+            "step": 50,
+            "metrics": {
+              "train_loss": 1.123,
+              "val_RMSE": 2.645
+            }
+          },
+          {
+            "step": 60,
+            "metrics": {
+              "train_loss": 1.008,
+              "val_RMSE": 2.621
+            }
+          },
+          {
+            "step": 70,
+            "metrics": {
+              "train_loss": 0.922,
+              "val_RMSE": 2.603
+            }
+          },
+          {
+            "step": 80,
+            "metrics": {
+              "train_loss": 0.856,
+              "val_RMSE": 2.59
+            }
+          },
+          {
+            "step": 90,
+            "metrics": {
+              "train_loss": 0.803,
+              "val_RMSE": 2.579
+            }
+          },
+          {
+            "step": 100,
+            "metrics": {
+              "train_loss": 0.759,
+              "val_RMSE": 2.571
+            }
+          }
+        ],
+        "notes": "演示数值，仅用于展示。",
+        "artifact_path": ""
+      },
+      {
+        "id": "exp-gate-33",
+        "created_at": "2026-10-16T14:01:37.163965+00:00",
+        "project_id": "pep",
+        "experiment_id": "exp-gate",
+        "seed": 33,
+        "status": "completed",
+        "metrics": {
+          "RMSE": 2.59,
+          "Pearson": 0.402
+        },
+        "history": [
+          {
+            "step": 0,
+            "metrics": {
+              "train_loss": 5.56,
+              "val_RMSE": 4.29
+            }
+          },
+          {
+            "step": 10,
+            "metrics": {
+              "train_loss": 2.823,
+              "val_RMSE": 3.157
+            }
+          },
+          {
+            "step": 20,
+            "metrics": {
+              "train_loss": 1.974,
+              "val_RMSE": 2.93
+            }
+          },
+          {
+            "step": 30,
+            "metrics": {
+              "train_loss": 1.56,
+              "val_RMSE": 2.833
+            }
+          },
+          {
+            "step": 40,
+            "metrics": {
+              "train_loss": 1.315,
+              "val_RMSE": 2.779
+            }
+          },
+          {
+            "step": 50,
+            "metrics": {
+              "train_loss": 1.153,
+              "val_RMSE": 2.745
+            }
+          },
+          {
+            "step": 60,
+            "metrics": {
+              "train_loss": 1.038,
+              "val_RMSE": 2.721
+            }
+          },
+          {
+            "step": 70,
+            "metrics": {
+              "train_loss": 0.952,
+              "val_RMSE": 2.703
+            }
+          },
+          {
+            "step": 80,
+            "metrics": {
+              "train_loss": 0.886,
+              "val_RMSE": 2.69
+            }
+          },
+          {
+            "step": 90,
+            "metrics": {
+              "train_loss": 0.833,
+              "val_RMSE": 2.679
+            }
+          },
+          {
+            "step": 100,
+            "metrics": {
+              "train_loss": 0.789,
+              "val_RMSE": 2.671
+            }
+          }
+        ],
+        "notes": "演示数值，仅用于展示。",
+        "artifact_path": ""
+      },
+      {
+        "id": "exp-gate-44",
+        "created_at": "2026-10-16T14:01:37.163965+00:00",
+        "project_id": "pep",
+        "experiment_id": "exp-gate",
+        "seed": 44,
+        "status": "completed",
+        "metrics": {
+          "RMSE": 2.4,
+          "Pearson": 0.43
+        },
+        "history": [
+          {
+            "step": 0,
+            "metrics": {
+              "train_loss": 5.59,
+              "val_RMSE": 4.1
+            }
+          },
+          {
+            "step": 10,
+            "metrics": {
+              "train_loss": 2.853,
+              "val_RMSE": 2.967
+            }
+          },
+          {
+            "step": 20,
+            "metrics": {
+              "train_loss": 2.004,
+              "val_RMSE": 2.74
+            }
+          },
+          {
+            "step": 30,
+            "metrics": {
+              "train_loss": 1.59,
+              "val_RMSE": 2.643
+            }
+          },
+          {
+            "step": 40,
+            "metrics": {
+              "train_loss": 1.345,
+              "val_RMSE": 2.589
+            }
+          },
+          {
+            "step": 50,
+            "metrics": {
+              "train_loss": 1.183,
+              "val_RMSE": 2.555
+            }
+          },
+          {
+            "step": 60,
+            "metrics": {
+              "train_loss": 1.068,
+              "val_RMSE": 2.531
+            }
+          },
+          {
+            "step": 70,
+            "metrics": {
+              "train_loss": 0.982,
+              "val_RMSE": 2.513
+            }
+          },
+          {
+            "step": 80,
+            "metrics": {
+              "train_loss": 0.916,
+              "val_RMSE": 2.5
+            }
+          },
+          {
+            "step": 90,
+            "metrics": {
+              "train_loss": 0.863,
+              "val_RMSE": 2.489
+            }
+          },
+          {
+            "step": 100,
+            "metrics": {
+              "train_loss": 0.819,
+              "val_RMSE": 2.481
+            }
+          }
+        ],
+        "notes": "演示数值，仅用于展示。",
+        "artifact_path": ""
+      },
+      {
+        "id": "exp-gate-55",
+        "created_at": "2026-10-16T14:01:37.163965+00:00",
+        "project_id": "pep",
+        "experiment_id": "exp-gate",
+        "seed": 55,
+        "status": "completed",
+        "metrics": {
+          "RMSE": 2.54,
+          "Pearson": 0.409
+        },
+        "history": [
+          {
+            "step": 0,
+            "metrics": {
+              "train_loss": 5.62,
+              "val_RMSE": 4.24
+            }
+          },
+          {
+            "step": 10,
+            "metrics": {
+              "train_loss": 2.883,
+              "val_RMSE": 3.107
+            }
+          },
+          {
+            "step": 20,
+            "metrics": {
+              "train_loss": 2.034,
+              "val_RMSE": 2.88
+            }
+          },
+          {
+            "step": 30,
+            "metrics": {
+              "train_loss": 1.62,
+              "val_RMSE": 2.783
+            }
+          },
+          {
+            "step": 40,
+            "metrics": {
+              "train_loss": 1.375,
+              "val_RMSE": 2.729
+            }
+          },
+          {
+            "step": 50,
+            "metrics": {
+              "train_loss": 1.213,
+              "val_RMSE": 2.695
+            }
+          },
+          {
+            "step": 60,
+            "metrics": {
+              "train_loss": 1.098,
+              "val_RMSE": 2.671
+            }
+          },
+          {
+            "step": 70,
+            "metrics": {
+              "train_loss": 1.012,
+              "val_RMSE": 2.653
+            }
+          },
+          {
+            "step": 80,
+            "metrics": {
+              "train_loss": 0.946,
+              "val_RMSE": 2.64
+            }
+          },
+          {
+            "step": 90,
+            "metrics": {
+              "train_loss": 0.893,
+              "val_RMSE": 2.629
+            }
+          },
+          {
+            "step": 100,
+            "metrics": {
+              "train_loss": 0.849,
+              "val_RMSE": 2.621
+            }
+          }
+        ],
+        "notes": "演示数值，仅用于展示。",
+        "artifact_path": ""
+      },
+      {
+        "id": "exp-shuffle-11",
+        "created_at": "2026-10-16T14:01:37.163965+00:00",
+        "project_id": "pep",
+        "experiment_id": "exp-shuffle",
+        "seed": 11,
+        "status": "completed",
+        "metrics": {
+          "RMSE": 2.67,
+          "Pearson": 0.39
+        },
+        "history": [
+          {
+            "step": 0,
+            "metrics": {
+              "train_loss": 5.5,
+              "val_RMSE": 4.37
+            }
+          },
+          {
+            "step": 10,
+            "metrics": {
+              "train_loss": 2.763,
+              "val_RMSE": 3.237
+            }
+          },
+          {
+            "step": 20,
+            "metrics": {
+              "train_loss": 1.914,
+              "val_RMSE": 3.01
+            }
+          },
+          {
+            "step": 30,
+            "metrics": {
+              "train_loss": 1.5,
+              "val_RMSE": 2.913
+            }
+          },
+          {
+            "step": 40,
+            "metrics": {
+              "train_loss": 1.255,
+              "val_RMSE": 2.859
+            }
+          },
+          {
+            "step": 50,
+            "metrics": {
+              "train_loss": 1.093,
+              "val_RMSE": 2.825
+            }
+          },
+          {
+            "step": 60,
+            "metrics": {
+              "train_loss": 0.978,
+              "val_RMSE": 2.801
+            }
+          },
+          {
+            "step": 70,
+            "metrics": {
+              "train_loss": 0.892,
+              "val_RMSE": 2.783
+            }
+          },
+          {
+            "step": 80,
+            "metrics": {
+              "train_loss": 0.826,
+              "val_RMSE": 2.77
+            }
+          },
+          {
+            "step": 90,
+            "metrics": {
+              "train_loss": 0.773,
+              "val_RMSE": 2.759
+            }
+          },
+          {
+            "step": 100,
+            "metrics": {
+              "train_loss": 0.729,
+              "val_RMSE": 2.751
+            }
+          }
+        ],
+        "notes": "演示数值，仅用于展示。",
+        "artifact_path": ""
+      },
+      {
+        "id": "exp-shuffle-22",
+        "created_at": "2026-10-16T14:01:37.163965+00:00",
+        "project_id": "pep",
+        "experiment_id": "exp-shuffle",
+        "seed": 22,
+        "status": "completed",
+        "metrics": {
+          "RMSE": 2.55,
+          "Pearson": 0.408
+        },
+        "history": [
+          {
+            "step": 0,
+            "metrics": {
+              "train_loss": 5.53,
+              "val_RMSE": 4.25
+            }
+          },
+          {
+            "step": 10,
+            "metrics": {
+              "train_loss": 2.793,
+              "val_RMSE": 3.117
+            }
+          },
+          {
+            "step": 20,
+            "metrics": {
+              "train_loss": 1.944,
+              "val_RMSE": 2.89
+            }
+          },
+          {
+            "step": 30,
+            "metrics": {
+              "train_loss": 1.53,
+              "val_RMSE": 2.793
+            }
+          },
+          {
+            "step": 40,
+            "metrics": {
+              "train_loss": 1.285,
+              "val_RMSE": 2.739
+            }
+          },
+          {
+            "step": 50,
+            "metrics": {
+              "train_loss": 1.123,
+              "val_RMSE": 2.705
+            }
+          },
+          {
+            "step": 60,
+            "metrics": {
+              "train_loss": 1.008,
+              "val_RMSE": 2.681
+            }
+          },
+          {
+            "step": 70,
+            "metrics": {
+              "train_loss": 0.922,
+              "val_RMSE": 2.663
+            }
+          },
+          {
+            "step": 80,
+            "metrics": {
+              "train_loss": 0.856,
+              "val_RMSE": 2.65
+            }
+          },
+          {
+            "step": 90,
+            "metrics": {
+              "train_loss": 0.803,
+              "val_RMSE": 2.639
+            }
+          },
+          {
+            "step": 100,
+            "metrics": {
+              "train_loss": 0.759,
+              "val_RMSE": 2.631
+            }
+          }
+        ],
+        "notes": "演示数值，仅用于展示。",
+        "artifact_path": ""
+      },
+      {
+        "id": "shuffle-running",
+        "created_at": "2026-10-17T14:01:37.163965+00:00",
+        "project_id": "pep",
+        "experiment_id": "exp-shuffle",
+        "seed": 33,
+        "status": "running",
+        "metrics": {},
+        "history": [],
+        "notes": "手动记录的运行状态；没有连接远程训练任务。"
+      }
+    ],
+    "papers": [
+      {
+        "id": "paper-esm",
+        "created_at": "2026-10-13T14:01:37.163965+00:00",
+        "project_id": "pep",
+        "hypothesis_id": "h-contact",
+        "title": "Evolutionary-scale prediction of atomic-level protein structure with a language model",
+        "authors": "Lin et al.",
+        "year": "2023",
+        "url": "https://doi.org/10.1126/science.ade2574",
+        "doi": "10.1126/science.ade2574",
+        "summary": "示例阅读卡：用于说明蛋白语言模型的背景。该论文不能直接证明当前接触门控假设，也不提供本示例的实验结果。",
+        "evidence_type": "context"
+      },
+      {
+        "id": "paper-plan",
+        "created_at": "2026-10-15T14:01:37.163965+00:00",
+        "project_id": "mol",
+        "hypothesis_id": "h-size",
+        "title": "待补充：分子尺寸与打分函数偏置",
+        "authors": "",
+        "year": "",
+        "url": "",
+        "doi": "",
+        "summary": "示例占位阅读任务，尚未关联真实论文。请补充原文与支持结论的具体位置。",
+        "evidence_type": "context"
+      }
+    ],
+    "notes": [
+      {
+        "id": "note-1",
+        "created_at": "2026-10-16T14:01:37.163965+00:00",
+        "project_id": "pep",
+        "experiment_id": "exp-gate",
+        "hypothesis_id": "h-contact",
+        "title": "Pooling 对照：先确认比较是否公平",
+        "body": "## 本次观察\n演示结果中，contact gate 的 5 个 seed 都优于 baseline。\n\n## 仍然未知\n- 接触数量是否构成捷径\n- 换一个 held-out target fold 后是否稳定\n- 参数量与训练预算是否严格匹配\n\n## 下一步\n完成 shuffled contact 对照，再决定是否扩大实验。\n\n> 本条记录及其指标均为示例。"
+      },
+      {
+        "id": "note-2",
+        "created_at": "2026-10-15T14:01:37.163965+00:00",
+        "project_id": "mol",
+        "hypothesis_id": "h-size",
+        "title": "评价单位：同靶点、同尺寸分布",
+        "body": "## 评价计划\n1. 先核验输入分子与失败记录\n2. 按重原子数分箱匹配\n3. 同时报告有效率、多样性与原始打分\n4. 保留未成功 docking 的分子及原因\n\n不把最终奖励均值直接解释为分子质量。"
+      }
+    ],
+    "decisions": [
+      {
+        "id": "dec-1",
+        "created_at": "2026-10-16T14:01:37.163965+00:00",
+        "project_id": "pep",
+        "hypothesis_id": "h-pool",
+        "experiment_id": "exp-shuffle",
+        "title": "补齐随机接触门控的 5 个 seed",
+        "rationale": "区分界面信息收益与容量、接触数量的影响。",
+        "criterion": "seed 11/22/33/44/55 全部完成；与 baseline 计算配对差值。",
+        "status": "doing",
+        "priority": "high",
+        "due_date": "2026-10-19"
+      },
+      {
+        "id": "dec-2",
+        "created_at": "2026-10-16T14:01:37.163965+00:00",
+        "project_id": "pep",
+        "hypothesis_id": "h-contact",
+        "title": "在第二个 target split 上复现",
+        "rationale": "单一划分不足以证明跨靶点泛化。",
+        "criterion": "固定配置、固定数据版本；不根据测试集调参。",
+        "status": "todo",
+        "priority": "medium",
+        "due_date": ""
+      },
+      {
+        "id": "dec-3",
+        "created_at": "2026-10-16T14:01:37.163965+00:00",
+        "project_id": "mol",
+        "hypothesis_id": "h-size",
+        "experiment_id": "exp-size",
+        "title": "建立尺寸匹配的分子对照集",
+        "rationale": "排除分子大小对打分的影响。",
+        "criterion": "同靶点重原子数分布匹配，保留所有失败行。",
+        "status": "todo",
+        "priority": "high",
+        "due_date": ""
+      }
+    ]
+  }
+}

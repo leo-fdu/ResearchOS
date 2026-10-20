@@ -1,0 +1,45 @@
+:root { color-scheme: light dark; --fg:#20232a; --muted:#777e8b; --line:#e5e7ec; --card:#eff6ff; --accent:#2961e6; }
+@media(prefers-color-scheme:dark) { :root { --fg:#e5e7ef; --muted:#959bad; --line:#363944; --card:#2b2e39; --accent:#a3afff; } }
+* { box-sizing:border-box; }
+html { background:transparent; overflow-x:hidden; }
+body { margin:0; color:var(--fg); font:14px/1.7 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif; -webkit-font-smoothing:antialiased; overflow-wrap:anywhere; }
+main { padding:24px 24px 32px; }
+.message { margin:0 0 28px; }
+.message.user { margin-left:24px; display:flex; flex-direction:column; align-items:flex-end; }
+.message.user .bubble { max-width:100%; padding:11px 17px; background:#f4f6f9; border-radius:22px; }
+.user .role { display:none; }
+.copy { opacity:0; pointer-events:none; transition:opacity .12s; display:inline-flex; align-items:center; justify-content:center; }
+.message:hover .copy,.message:focus-within .copy,.message.copy-focused .copy { opacity:1; pointer-events:auto; }
+.copy:focus-visible { opacity:1; pointer-events:auto; }
+.message.copy-success .copy { opacity:1; pointer-events:auto; color:var(--accent); }
+.user .actions { justify-content:flex-end; margin-top:4px; height:27px; }
+.assistant .actions { height:27px; }
+@media (hover:none) { .copy { opacity:1; pointer-events:auto; } }
+.role { display:flex; align-items:center; gap:7px; font-size:11px; letter-spacing:.04em; color:var(--muted); margin-bottom:9px; }
+
+.content p { margin:0 0 12px; } .content p:last-child { margin-bottom:0; }
+.content h1,.content h2,.content h3 { line-height:1.45; margin:20px 0 10px; font-weight:650; }
+.content h1 { font-size:20px; } .content h2 { font-size:17px; } .content h3 { font-size:15px; }
+.content ul,.content ol { padding-left:22px; margin:8px 0 14px; }
+.content li { margin:5px 0; }
+a { color:var(--accent); text-decoration:none; } a:hover { text-decoration:underline; }
+a[href^="pdfchat:"] { border-radius:5px; background:var(--card); padding:1px 5px; white-space:nowrap; }
+blockquote { margin:12px 0; padding:2px 12px; border-left:3px solid var(--accent); color:var(--muted); }
+code { font:12px/1.6 "SF Mono",Menlo,monospace; background:var(--card); padding:2px 5px; border-radius:4px; }
+pre { background:var(--card); padding:14px; border-radius:10px; overflow:auto; } pre code { padding:0; }
+table { display:block; max-width:100%; overflow-x:auto; border-collapse:collapse; margin:14px 0; font-size:13px; }
+th,td { border:1px solid var(--line); padding:8px 10px; text-align:left; min-width:65px; } th { background:var(--card); }
+.katex-display { overflow-x:auto; overflow-y:hidden; padding:4px 0; }
+.quote { font-size:12px; padding:8px 12px; margin-bottom:10px; border-left:2px solid var(--accent); color:var(--muted); white-space:pre-wrap; max-height:140px; overflow:auto; }
+.user .content { white-space:pre-wrap; }
+.images { display:flex; gap:8px; flex-wrap:wrap; } .images img { max-width:100%; max-height:180px; border-radius:10px; margin-bottom:8px; }
+.actions { display:flex; align-items:center; gap:10px; color:var(--muted); font-size:11px; margin-top:10px; }
+button { font:inherit; color:var(--muted); border:0; border-radius:7px; padding:4px 8px; cursor:pointer; background:transparent; }
+button:hover { background:var(--card); color:var(--accent); }
+details { color:var(--muted); font-size:11px; margin-top:8px; } summary { cursor:pointer; } details pre { white-space:pre-wrap; }
+.pending { color:var(--muted); font-size:13px; }.pending::before { content:'●'; color:var(--accent); padding-right:8px; animation:breathe 1.2s ease-in-out infinite alternate; }
+@keyframes breathe { to { opacity:.25; } } @media(prefers-reduced-motion:reduce) { * { animation:none!important; } }
+.error { color:#c74d59; } #latest { position:fixed; bottom:16px; left:50%; transform:translateX(-50%); padding:8px 14px; background:var(--card); color:var(--fg); border:1px solid var(--line); box-shadow:0 4px 16px #0001; }
+.empty { padding:70px 6px 20px; text-align:center; } .empty .symbol { font-size:36px; color:var(--accent); }
+.empty h2 { font-size:20px; font-weight:600; margin:14px 0 8px; } .empty p { font-size:13px; color:var(--muted); margin:0 0 26px; }
+.suggestions { display:grid; gap:10px; text-align:left; } .suggestions button { text-align:left; border:1px solid var(--line); border-radius:12px; padding:12px 14px; color:var(--fg); }
