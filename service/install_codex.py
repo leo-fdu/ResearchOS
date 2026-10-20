@@ -34,7 +34,10 @@ def install(destination):
             proxy = urllib.request.getproxies().get('https')
             if proxy:
                 command.extend(['--proxy', proxy])
-            subprocess.run(command + [URL], check=True)
+            try:
+                subprocess.run(command + [URL], check=True)
+            except subprocess.CalledProcessError:
+                raise RuntimeError('Download failed. Check your connection to GitHub and retry, or use the manual installation instructions.') from None
             digest = hashlib.sha256()
             with archive.open('rb') as downloaded:
                 while chunk := downloaded.read(1024 * 1024):
