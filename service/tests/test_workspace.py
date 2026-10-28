@@ -42,6 +42,50 @@ class WorkspaceTests(unittest.TestCase):
         params=next(p for m,p in calls if m=='turn/start')
         self.assertEqual(params['effort'],'high');self.assertEqual(params['model'],'fixture')
         self.assertEqual(params['sandboxPolicy']['type'],'readOnly')
+    def test_project_attachment_keeps_message_clean_and_restores(self):
+        from unittest.mock import patch
+        a=Agent(self.w,self.lib,Store(self.base/'legacy'));session=self.w.session()
+        project=self.record('project');calls=[];a.start=lambda:None
+        def rpc(method,params):
+            calls.append((method,params))
+            if method=='thread/start':return {'thread':{'id':'fake-thread'}}
+            if method=='turn/steer':return {'turnId':'fake-turn'}
+            return {'turn':{'id':'fake-turn'}}
+        a.rpc=rpc
+        with patch('ros.agent.threading.Thread') as thread:
+            a.turn(session['id'],'What next?',documents=[project['id']])
+            a._begin(*thread.call_args.kwargs['args'])
+        self.assertEqual(self.w.messages(session['id'])[0]['text'],'What next?')
+        self.assertEqual(self.w.session_documents(session['id']),[project['id']])
+        self.assertEqual(self.w.one('SELECT title FROM sessions WHERE id=?',(session['id'],))['title'],'What next?')
+        self.assertIn(project['id'],next(p for m,p in calls if m=='turn/start')['input'][0]['text'])
+        a.turn(session['id'],'Follow up',documents=[project['id']])
+        self.assertIn(project['id'],next(p for m,p in calls if m=='turn/steer')['input'][0]['text'])
+        self.assertEqual(a.selected_resources([]),[])
+
+    def test_images_reach_start_steer_and_history(self):
+        import base64
+        from unittest.mock import patch
+        image='data:image/png;base64,'+base64.b64encode(b'\x89PNG\r\n\x1a\nfixture').decode()
+        a=Agent(self.w,self.lib,Store(self.base/'legacy'));session=self.w.session();calls=[]
+        a.start=lambda:None
+        def rpc(method,params):
+            calls.append((method,params))
+            if method=='thread/start':return {'thread':{'id':'fake-thread'}}
+            if method=='turn/steer':return {'turnId':'fake-turn'}
+            return {'turn':{'id':'fake-turn'}}
+        a.rpc=rpc
+        with patch('ros.agent.threading.Thread') as thread:
+            a.turn(session['id'],'Describe this',images=[image])
+            a._begin(*thread.call_args.kwargs['args'])
+        self.assertEqual(next(p for m,p in calls if m=='turn/start')['input'][-1],{'type':'image','url':image})
+        self.assertEqual(self.w.messages(session['id'])[0]['metadata']['images'],[image])
+        a.turn(session['id'],'Another image',images=[image])
+        self.assertEqual(next(p for m,p in calls if m=='turn/steer')['input'][-1],{'type':'image','url':image})
+        self.assertEqual(self.w.messages(session['id'])[-1]['metadata']['images'],[image])
+        for invalid in [['https://example.com/image.png'],[image]*9,['data:image/png;base64,broken']]:
+            with self.assertRaises(ValueError):a.validate_images(invalid)
+
     def test_invalid_effort_does_not_create_message(self):
         a=Agent(self.w,self.lib,Store(self.base/'legacy'));session=self.w.session()
         a.models=[{'id':'fixture','supportedReasoningEfforts':[{'reasoningEffort':'high'}]}]

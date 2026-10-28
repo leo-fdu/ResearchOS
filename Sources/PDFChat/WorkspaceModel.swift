@@ -15,6 +15,10 @@ struct Row: Identifiable {
   var data: [String: Any] { raw["data"] as? [String: Any] ?? [:] }
 }
 
+func researchMessageText(_ text: String) -> String {
+  text.replacingOccurrences(of: "^Current research record ID: [0-9a-fA-F]{32}(?:\\r?\\n\\r?\\n|$)", with: "", options: .regularExpression)
+}
+
 func workspaceDate(_ value: String) -> String {
   let parser = ISO8601DateFormatter()
   parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -27,6 +31,7 @@ func workspaceDate(_ value: String) -> String {
 }
 
 @MainActor final class WorkspaceModel: ObservableObject {
+  @Published var brainstormSelection = ""
   @Published var objects: [Row] = []
   @Published var documents: [Row] = []
   @Published var documentCount = 0
@@ -39,9 +44,16 @@ func workspaceDate(_ value: String) -> String {
   @Published var activities: [Row] = []
   @Published var selectedSection = "home"
   @Published var project = ""
-  @Published var selected: Row?
+  @Published var selected: Row? {
+    didSet {
+      guard selected?.id != oldValue?.id, let row = selected, ["project", "idea"].contains(row.string("kind")) else { return }
+      // The visible attachment chip is the source of truth; removing it also removes context.
+      if !attached.contains(row.id) { attached.append(row.id) }
+    }
+  }
   @Published var sessionID = ""
   @Published var attached: [String] = []
+  @Published var pendingImages: [ChatImage] = []
   @Published var input = ""
   @Published var model = ""
   @Published var models: [Row] = []
@@ -89,8 +101,14 @@ func workspaceDate(_ value: String) -> String {
   private var selectionGeneration = UUID()
   private var starting = false
   private var widgetBytes: Data?
-  static let dataDirectory = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(
-    "Library/Application Support/Research OS 2")
+  static let isPreview = Bundle.main.bundleIdentifier == "com.niqi.researchos.brainstorm-preview"
+  static let dataDirectory: URL = {
+    if let override = ProcessInfo.processInfo.environment["RESEARCHOS_DATA_DIR"], !override.isEmpty {
+      return URL(fileURLWithPath: override)
+    }
+    return FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(
+      "Library/Application Support/" + (isPreview ? "Research OS Brainstorm Preview" : "Research OS 2"))
+  }()
   init() {
     model = UserDefaults.standard.string(forKey: "ros.model") ?? ""
     remember = UserDefaults.standard.object(forKey: "ros.remember") as? Bool ?? true
@@ -134,6 +152,7 @@ func workspaceDate(_ value: String) -> String {
       environment.removeValue(forKey: "PYTHONPATH")
       environment["PYTHONUNBUFFERED"] = "1"
       environment["PYTHONDONTWRITEBYTECODE"] = "1"
+      if Self.isPreview { environment["RESEARCHOS_ISOLATED"] = "1" }
       process.environment = environment
       let log = Self.dataDirectory.appendingPathComponent("server.log")
       if let size = try? fm.attributesOfItem(atPath: log.path)[.size] as? NSNumber, size.intValue > 5_000_000 { try? fm.moveItem(at: log, to: Self.dataDirectory.appendingPathComponent("server-previous.log")) }
@@ -216,6 +235,8 @@ func workspaceDate(_ value: String) -> String {
         let updated = objects.first(where: { $0.id == current.id })
       {
         selected = updated
+      } else if let current = selected, current.string("kind") != "pdf", let updated = documents.first(where: { $0.id == current.id }), updated.string("hash") != current.string("hash") {
+        await select(updated)
       }
     } catch { if !silent { self.error = error.localizedDescription } }
   }
@@ -282,11 +303,13 @@ func workspaceDate(_ value: String) -> String {
     canSteer = false
     approvals = []
     activities = []
-    attached = selected?.string("kind") == "pdf" ? [selected!.id] : []
+    pendingImages = []
+    attached = selected.map { ["pdf", "project", "idea"].contains($0.string("kind")) ? [$0.id] : [] } ?? []
     pdf.quote = nil
     showAssistant = true
   }
   func openSession(_ id: String) async {
+    pendingImages = []
     sessionID = id
     canSteer = false
     transcriptStamp = ""
@@ -299,13 +322,25 @@ func workspaceDate(_ value: String) -> String {
     if !attached.contains(paper.id) { attached.append(paper.id) }
     pdf.quote = nil
   }
+  func addAssistantImage(_ image: NSImage) {
+    guard pendingImages.count < 8 else { error = "Attach up to 8 images per message."; return }
+    guard let tiff = image.tiffRepresentation, let bitmap = NSBitmapImageRep(data: tiff),
+          let data = bitmap.representation(using: .png, properties: [:]) else { error = "Could not read this image."; return }
+    guard data.count <= 8_000_000, pendingImages.reduce(data.count, { $0 + ($1.thumbData?.count ?? 0) }) <= 12_000_000 else { error = "Images are too large. Choose smaller images (8 MB each, 12 MB total)."; return }
+    pendingImages.append(ChatImage(dataURL: "data:image/png;base64," + data.base64EncodedString(), thumbData: data))
+  }
+  func chooseAssistantImages() {
+    let panel = NSOpenPanel(); panel.allowsMultipleSelection = true; panel.allowedContentTypes = [.image]
+    if panel.runModal() == .OK { for url in panel.urls { if let image = NSImage(contentsOf: url) { addAssistantImage(image) } } }
+  }
   func send() async {
-    guard !input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, !sending, !busy || canSteer else {
+    guard (!input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !pendingImages.isEmpty), !sending, !busy || canSteer else {
       return
     }
     sending = true
     defer { sending = false }
     let draft = input
+    let images = pendingImages
     let originalSession = sessionID
     let quote = pdf.quote
     do {
@@ -317,21 +352,19 @@ func workspaceDate(_ value: String) -> String {
         sessionID = result["id"] as? String ?? ""
       }
       let targetSession = sessionID
-      var text = draft
+      var text = draft.isEmpty ? "Please analyze the attached images." : draft
       if let quote {
         text = "Quote from PDF page  \(quote.page) : \n\(quote.text)\n\n" + text
-      }
-      if let selected, objects.contains(where: { $0.id == selected.id }) {
-        text = "Current research record ID: \(selected.id)\n\n" + text
       }
       _ = try await request(
         "/v2/turn",
         body: [
-          "session_id": targetSession, "text": text, "documents": attached, "model": model,
+          "session_id": targetSession, "text": text, "documents": attached, "images": images.map(\.dataURL), "model": model,
           "memory": remember, "execution": execution, "effort": effort, "web_search": webSearch,
         ])
       guard sessionID == targetSession else { return }
       if input == draft { input = ""; pdf.quote = nil }
+      pendingImages.removeAll { image in images.contains { $0.dataURL == image.dataURL } }
       busy = true
       UserDefaults.standard.set(model, forKey: "ros.model")
       UserDefaults.standard.set(effort, forKey: "ros.effort")
@@ -360,7 +393,7 @@ func workspaceDate(_ value: String) -> String {
           let stable =
             UUID(uuidString: row.id) ?? UUID(uuidString: Self.uuidString(row.id)) ?? UUID()
           return ChatMessage(
-            id: stable, role: row.string("role"), text: row.string("text"), images: [],
+            id: stable, role: row.string("role"), text: row.string("role") == "user" ? researchMessageText(row.string("text")) : row.string("text"), images: ((row.raw["metadata"] as? [String: Any])?["images"] as? [String] ?? []).map { ChatImage(dataURL: $0, thumbData: Data(base64Encoded: String($0.split(separator: ",", maxSplits: 1).last ?? ""))) },
             streaming: row.string("status") == "streaming", model: model,
             status: ["failed": "error", "interrupted": "stopped"][row.string("status")] ?? row.string("status"))
         }
@@ -388,6 +421,7 @@ func workspaceDate(_ value: String) -> String {
     } catch { self.error = error.localizedDescription }
   }
   func select(_ row: Row, page: Int? = nil) async {
+    if row.string("kind") == "brainstorm" { selected = nil; selectedSection = "brainstorm"; brainstormSelection = row.id; return }
     if roots.contains(where: { $0.id == row.id }) { selected = nil; selectedSection = row.string("kind") == "notes" ? "note" : row.string("kind"); return }
     if row.string("source_type") == "session" { await openSession(row.id); return }
     selected = row
@@ -417,7 +451,9 @@ func workspaceDate(_ value: String) -> String {
     } catch { self.error = error.localizedDescription }
   }
   func handleLink(_ url: URL) {
-    if url.host == "session" {
+    if url.host == "brainstorm" {
+      selected = nil; selectedSection = "brainstorm"; brainstormSelection = url.lastPathComponent
+    } else if url.host == "session" {
       Task { await openSession(url.lastPathComponent) }
     } else if url.host == "document" {
       let id = url.lastPathComponent
@@ -464,6 +500,7 @@ func workspaceDate(_ value: String) -> String {
     showComposer = true
   }
   func writeWidgetSnapshot() {
+    guard !Self.isPreview, ProcessInfo.processInfo.environment["RESEARCHOS_DATA_DIR"] == nil else { return }
     guard
       let directory = FileManager.default.containerURL(
         forSecurityApplicationGroupIdentifier: "group.com.niqi.researchos")

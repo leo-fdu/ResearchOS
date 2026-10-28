@@ -9,6 +9,8 @@ struct DetailPane: View {
   @State private var showAudit = false
   @State private var audit: [Row] = []
   @State private var showLinks = false
+  @State private var newPaperNote = false
+  @State private var graphRelated: [Row] = []
   private var isObject: Bool { model.objects.contains { $0.id == row.id } }
   private var related: [Row] {
     let ids = model.edges.filter { $0.string("source") == row.id || $0.string("target") == row.id }
@@ -21,43 +23,39 @@ struct DetailPane: View {
   }
   var body: some View {
     VStack(spacing: 0) {
-      if row.string("kind") != "pdf" {
       HStack {
-        Text(labels[row.string("kind")] ?? row.string("kind")).font(.caption).foregroundStyle(
-          Palette.accent)
+        Text(labels[row.string("kind")] ?? row.string("kind")).font(.caption).foregroundStyle(Palette.accent)
         Spacer()
-        Button("Link resources") { showLinks = true }
-        if isObject {
-          Button("Edit ") { model.compose(row.string("kind"), row: row) }
-          Button("History") {
-            Task {
-              do {
-                audit = model.rows(try await model.request("/v2/audit?id=" + row.id))
-                showAudit = true
-              } catch { model.error = error.localizedDescription }
-            }
-          }
-          Button(role: .destructive) {
-            confirmDelete = true
-          } label: {
-            Image(systemName: "trash")
-          }
+        if row.string("kind") == "pdf" {
+          Button("New note") { newPaperNote = true }
         } else {
-          Button("Add to discussion") {
-            if !model.attached.contains(row.id) { model.attached.append(row.id) }
-            model.showAssistant = true
-          }
-          Button {
-            NSWorkspace.shared.activateFileViewerSelecting([
-              URL(fileURLWithPath: row.string("path"))
-            ])
-          } label: {
-            Image(systemName: "folder")
-          }
+          Button("Edit in Typora") { Task { await model.editMarkdown(row) } }
         }
-      }.padding(.horizontal, 20).padding(.vertical, 12)
+        Menu {
+          Button("Link resources…") { showLinks = true }
+          if !graphRelated.isEmpty {
+            Menu("Related resources") { ForEach(graphRelated) { item in Button(item.title) { if let url = URL(string: item.string("uri")) { model.handleLink(url) } } } }
+          }
+          if row.string("kind") == "pdf" {
+            Menu("Paper notes") {
+              ForEach(related.filter { $0.string("kind") == "note" || $0.string("kind") == "notes" }) { note in Button(note.title) { Task { await model.select(note) } } }
+            }.disabled(related.filter { $0.string("kind") == "note" || $0.string("kind") == "notes" }.isEmpty)
+          } else if isObject {
+            Button("Properties…") { model.compose(row.string("kind"), row: row) }
+            Button("History") {
+              Task {
+                do { audit = model.rows(try await model.request("/v2/audit?id=" + row.id)); showAudit = true }
+                catch { model.error = error.localizedDescription }
+              }
+            }
+            Button("Delete", role: .destructive) { confirmDelete = true }
+          } else {
+            Button("Add to discussion") { if !model.attached.contains(row.id) { model.attached.append(row.id) }; model.showAssistant = true }
+            Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: row.string("path"))]) }
+          }
+        } label: { Image(systemName: "ellipsis.circle") }.menuStyle(.borderlessButton).fixedSize().help("Resource actions and links")
+      }.controlSize(.small).padding(.horizontal, 20).padding(.vertical, 10)
       Divider()
-      }
       if row.string("kind") == "pdf" {
         PDFViewerView(store: model.pdf)
       } else if isObject {
@@ -76,6 +74,14 @@ struct DetailPane: View {
         }
       }
     }
+    .task(id: row.id + model.edges.map(\.id).joined()) {
+      do {
+        let graph = try await model.request("/v2/graph") as? [String: Any] ?? [:]
+        let ids = Set(model.rows(graph["edges"]).filter { $0.string("source") == row.id || $0.string("target") == row.id }.flatMap { [$0.string("source"), $0.string("target")] })
+        graphRelated = model.rows(graph["nodes"]).filter { $0.id != row.id && ids.contains($0.id) }
+      } catch { model.error = error.localizedDescription }
+    }
+    .sheet(isPresented: $newPaperNote) { PaperNoteComposer(model: model, paper: row) }
     .sheet(isPresented: $showLinks) { RelationComposer(model: model, source: row) }
     .sheet(isPresented: $showAudit) {
       VStack(alignment: .leading) {
@@ -120,6 +126,12 @@ struct DetailPane: View {
           Text("Details and progress notes").font(.headline)
         }
         ResearchMarkdown(text: row.string("body"), onLink: model.handleLink)
+        if let attachments = row.data["attachments"] as? [[String: Any]], !attachments.isEmpty {
+          VStack(alignment: .leading, spacing: 10) {
+            Text("Attachments").font(.headline)
+            ExperimentAttachments(items: attachments)
+          }
+        }
         if let source = row.data["source"] as? String {
           Label("Source: " + source, systemImage: "link").font(.caption).foregroundStyle(.secondary)
             .textSelection(.enabled)
@@ -140,6 +152,7 @@ struct DetailPane: View {
             model.input = "Read project \(row.id) and its linked resources. Review progress, unknowns and next steps; update its progress summary and detailed notes based on evidence."
           }.buttonStyle(.borderedProminent)
         }
+        if ["project", "idea"].contains(row.string("kind")) { Divider(); ExperimentJournal(model: model, owner: row) }
         if !related.isEmpty {
           Divider()
           Text("Related resources").font(.headline)
@@ -157,24 +170,6 @@ struct DetailPane: View {
   private var fileBody: some View {
     VStack(alignment: .leading, spacing: 12) {
       Text(row.string("path")).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
-      if ["md", "txt"].contains(URL(fileURLWithPath: row.string("path")).pathExtension.lowercased())
-      {
-        HStack {
-          Toggle("Edit note", isOn: $model.editingFile).toggleStyle(.switch)
-          Spacer()
-          if model.editingFile {
-            Button("Save to original file") {
-              Task {
-                await model.perform(
-                  "/v2/save-text",
-                  ["id": row.id, "text": model.editorText, "hash": model.editorHash],
-                  success: "Note saved. Previous content backed up.")
-                if model.error == nil { await model.select(row) }
-              }
-            }.buttonStyle(.borderedProminent)
-          }
-        }
-      }
       if model.editingFile {
         TextEditor(text: $model.editorText).font(.system(size: 14, design: .monospaced))
           .scrollIndicators(.visible)
@@ -306,13 +301,23 @@ struct ResearchAssistant: View {
   }
   private var composer: some View {
     VStack(alignment: .leading, spacing: 10) {
+      if !model.pendingImages.isEmpty {
+        ScrollView(.horizontal) { HStack {
+          ForEach(Array(model.pendingImages.enumerated()), id: \.offset) { index, item in
+            VStack {
+              if let data = item.thumbData, let image = NSImage(data: data) { Image(nsImage: image).resizable().scaledToFit().frame(width: 70, height: 60) }
+              Button("Remove") { model.pendingImages.remove(at: index) }.font(.caption)
+            }
+          }
+        } }
+      }
       if !model.attached.isEmpty {
         ScrollView(.horizontal, showsIndicators: false) {
           HStack {
             ForEach(model.attached, id: \.self) { id in
               HStack(spacing: 5) {
                 Image(systemName: "paperclip")
-                Text(model.documents.first { $0.id == id }?.title ?? id).lineLimit(1).frame(
+                Text((model.objects + model.documents).first { $0.id == id }?.title ?? "Unavailable attachment").lineLimit(1).frame(
                   maxWidth: 180)
                 Button {
                   model.attached.removeAll { $0 == id }
@@ -342,11 +347,12 @@ struct ResearchAssistant: View {
             Text(model.busy ? "Add guidance to the current task…" : "Ask about your research…").font(.system(size: 14)).foregroundStyle(.tertiary).padding(.leading, 13).padding(.top, 12).allowsHitTesting(false)
           }
           ChatInputTextView(text: $model.input, onSend: { Task { await model.send() } },
-            onPasteImage: { _ in model.error = "Attach a paper from the library to discuss its pages." },
+            onPasteImage: { model.addAssistantImage($0) },
             onTextChange: {}, onHeightChange: { inputHeight = min(max($0, 90), 220) }, focusObject: model)
             .frame(height: inputHeight)
         }
         HStack {
+          Button { model.chooseAssistantImages() } label: { Image(systemName: "photo.badge.plus") }.help("Upload images").accessibilityLabel("Upload images")
           if model.busy { ProgressView().controlSize(.small) }
           Button { showModelControls.toggle() } label: {
             HStack(spacing: 5) {
@@ -365,13 +371,13 @@ struct ResearchAssistant: View {
               Image(systemName: "stop.fill").frame(width: 22, height: 22)
             }.buttonStyle(.borderedProminent).help("Stop")
           }
-          if !model.busy || !model.input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+          if !model.busy || !model.input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !model.pendingImages.isEmpty {
             Button { Task { await model.send() } } label: {
               Image(systemName: model.busy ? "arrow.turn.up.right" : "arrow.up").fontWeight(.semibold).frame(width: 22, height: 22)
             }.buttonStyle(.borderedProminent)
               .accessibilityLabel(model.busy ? "Send guidance" : "Send message")
               .help(model.busy ? "Guide the current task (Return)" : "Send (Return); Shift+Return for a new line")
-              .disabled(model.sending || (model.busy && !model.canSteer) || model.input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+              .disabled(model.sending || (model.busy && !model.canSteer) || (model.input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && model.pendingImages.isEmpty))
           }
         }.padding(.horizontal, 12).padding(.bottom, 10)
       }.background(Color.white).clipShape(RoundedRectangle(cornerRadius: 16))
@@ -477,6 +483,7 @@ struct RecordComposer: View {
   @State private var project = ""
   @State private var status = "active"
   @State private var source = "user"
+  @State private var category = "concepts"
   @State private var saving = false
   private var isResearchRecord: Bool { ["project", "idea"].contains(model.composeKind) }
   private var statuses: [String] {
@@ -513,6 +520,9 @@ struct RecordComposer: View {
         TextField("Short overview · shown on the card", text: $summary).textFieldStyle(.roundedBorder)
         TextField("Progress summary · where things stand", text: $progress).textFieldStyle(.roundedBorder)
       }
+      if model.composeKind == "note" && model.editRecord?.data["entry_type"] as? String != "experiment_log" {
+        Picker("Notes folder", selection: $category) { Text("blog").tag("blog"); Text("concepts").tag("concepts"); Text("paper").tag("paper") }
+      }
       Text("Details · Progress, evidence, open questions and next steps").font(.caption).foregroundStyle(.secondary)
       TextEditor(text: $bodyText).font(.system(size: 14)).frame(minHeight: 250).border(
         Color.secondary.opacity(0.2))
@@ -536,6 +546,7 @@ struct RecordComposer: View {
           project = r.string("project_id")
           status = r.string("status")
           source = r.data["source"] as? String ?? "user"
+          category = r.data["category"] as? String ?? "concepts"
         } else {
           project = model.project
           status = isResearchRecord || model.composeKind == "task" ? "todo" : "active"
@@ -554,6 +565,7 @@ struct RecordComposer: View {
       record["status"] = status
       var data = model.editRecord?.data ?? [:]
       data["source"] = source
+      if model.composeKind == "note" && data["entry_type"] as? String != "experiment_log" { data["category"] = category }
       if ["project", "idea"].contains(model.composeKind) { data["summary"] = summary; data["progress_summary"] = progress }
       record["data"] = data
       do {

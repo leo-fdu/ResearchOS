@@ -4,7 +4,7 @@ from pathlib import Path
 from .store import stamp, uid, encode
 
 IGNORED={'.git','.venv','venv','node_modules','__pycache__','.build','.papermind-backups','.codex','.aws','.ssh','build','dist','checkpoints','wandb'}
-TEXT={'.md','.txt','.py','.json','.yaml','.yml','.toml','.csv','.tsv','.log','.ipynb','.rs','.swift','.js','.ts','.sh','.tex','.bib','.r','.cpp','.h'}
+TEXT={'.md','.markdown','.txt','.py','.json','.yaml','.yml','.toml','.csv','.tsv','.log','.ipynb','.rs','.swift','.js','.ts','.sh','.tex','.bib','.r','.cpp','.h'}
 def digest(path):
     h=hashlib.sha256()
     with path.open('rb') as f:
@@ -74,6 +74,7 @@ class Library:
                     self.check_cancel(job)
                     path=Path(folder)/name
                     if name.startswith('.') or any(x in name.lower() for x in ('credential','secret','api_key','id_rsa','auth.json')):continue
+                    if root['kind']=='notes' and (name.upper() in ('AGENTS.MD','INDEX.MD') or self.store.one('SELECT id FROM markdown_files WHERE path=? AND id NOT IN (SELECT id FROM documents)',(str(path),))):continue
                     ext=path.suffix.lower()
                     if (ext not in TEXT|{'.pdf'} and root['kind']!='data') or path.is_symlink():continue
                     try:
@@ -153,6 +154,8 @@ class Library:
             body+=(f"README: `{readme}`.Read this file when you need context: README." if readme
                 else 'No README in this folder. Purpose, source and version are not documented yet; add them through a discussion.')
             body+='\n\nThis entry stores the folder and README paths only. Internal files are not traversed or indexed.'
+            bound=self.store.one('SELECT path FROM markdown_files WHERE id=?',(ident,))
+            if bound and Path(bound['path']).is_file():body=Path(bound['path']).read_text(encoding='utf-8')[:500000]
             entries.append((ident,root['id'],str(directory),directory.name,root['kind']+'_catalog','',0,0,body,1,0,''))
         with self.store.db(fast=True) as db:
             db.execute('DELETE FROM search_index WHERE id IN (SELECT id FROM documents WHERE root_id=?)',(root['id'],))
@@ -165,6 +168,8 @@ class Library:
         d=self.store.document(id);path=self.store.allowed_path(d['path'])
         if d['kind'] in ('repo_catalog','data_catalog'):
             if not d['available'] or not path.is_dir():raise ValueError('Folder is offline')
+            from .authoring import sync
+            sync(self.store,id);d=self.store.document(id)
             return {'id':id,'title':d['title'],'path':str(path),'text':d['body'],'catalog_only':True}
         if not path.is_file() or not d['available']:raise ValueError(d.get('error') or 'Source file missing. Refresh the library.')
         if d['kind']=='data':return {'id':id,'text':d['body'],'metadata_only':True}

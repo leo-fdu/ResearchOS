@@ -149,7 +149,10 @@ struct PDFViewRepresentable: NSViewRepresentable {
         return view
     }
     func updateNSView(_ view: ReadingPDFView, context: Context) {
-        if view.document !== store.document { view.document = store.document; view.document?.delegate = context.coordinator }
+        if view.document !== store.document {
+            view.document = store.document; view.document?.delegate = context.coordinator
+            DispatchQueue.main.async { store.restorePositionIfReady() }
+        }
     }
     static func dismantleNSView(_ view: ReadingPDFView, coordinator: Coordinator) {
         NotificationCenter.default.removeObserver(coordinator)

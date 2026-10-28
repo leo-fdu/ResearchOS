@@ -8,7 +8,10 @@ from researchos.server import Handler as LegacyHandler
 from .store import Workspace,Conflict,stamp,encode
 from .library import Library,scholarly,digest
 from .agent import Agent
+from . import authoring
 from .ui import catalog_text
+from .brainstorm import Brainstorm
+from .brainstorm_runtime import catalog
 
 class Server(ThreadingHTTPServer):
     daemon_threads=True
@@ -17,13 +20,15 @@ class Server(ThreadingHTTPServer):
         legacy_dir=self.workspace.root/'experiments';legacy_dir.mkdir(exist_ok=True)
         old=Path.home()/'Library/Application Support/Research OS/researchos.sqlite3'
         target=legacy_dir/'researchos.sqlite3'
-        if old.is_file() and not target.exists():
+        if bootstrap_enabled and not os.environ.get('RESEARCHOS_ISOLATED') and old.is_file() and not target.exists():
             source=sqlite3.connect(f'file:{old}?mode=ro',uri=True);dest=sqlite3.connect(target)
             try:source.backup(dest)
             finally:source.close();dest.close()
         self.store=Store(legacy_dir);self.agent=Agent(self.workspace,self.library,self.store)
+        self.brainstorm=Brainstorm(self.workspace,self.library)
         self.token=secrets.token_urlsafe(32);self.closing=threading.Event()
         super().__init__(('127.0.0.1',port),Handler);self.origin=f'http://127.0.0.1:{self.server_port}'
+        self.brainstorm.origin=self.origin
         bootstrap=Path(__file__).resolve().parents[1]/'initial-connections.json'
         if bootstrap_enabled and bootstrap.is_file() and not self.workspace.setting('initial_connections_loaded',False):
             for entry in json.loads(bootstrap.read_text()):
@@ -37,12 +42,13 @@ class Server(ThreadingHTTPServer):
         threading.Thread(target=self.watch,daemon=True).start()
     def watch(self):
         while not self.closing.wait(90):
+            self.brainstorm.cleanup_deleted()
             if self.workspace.setting('auto_index',False):
                 for root in self.workspace.rows('SELECT * FROM roots WHERE enabled=1'):
                     try:self.library.start(root['id'])
                     except Exception:pass
     def server_close(self):
-        self.closing.set();self.agent.close();super().server_close()
+        self.closing.set();self.brainstorm.close();self.agent.close();super().server_close()
 
 class Handler(LegacyHandler):
     server_version='ResearchOS/2.0'
@@ -50,19 +56,35 @@ class Handler(LegacyHandler):
         parsed=urlsplit(self.path);path=parsed.path
         if not path.startswith('/v2/'):
             return super().route()
+        if path=='/v2/brainstorm/tool' and self.command=='POST':
+            self.guard(False)
+            pair=self.server.brainstorm.tool_tokens.get(self.headers.get('X-Brainstorm-Token',''))
+            if not pair:raise Problem('Unknown discussion capability',403)
+            try:return self.send(self.server.brainstorm.tool(*pair,self.body()))
+            except (ValueError,KeyError,OSError,RuntimeError) as exc:raise Problem(str(exc),400)
         self.guard(True);w=self.server.workspace;lib=self.server.library;agent=self.server.agent
         q={k:v[0] for k,v in parse_qs(parsed.query).items()}
         try:
             if self.command=='GET':
+                if path=='/v2/brainstorm/rooms':return self.send(self.server.brainstorm.list(q.get('deleted')=='1'))
+                if path=='/v2/brainstorm/room':return self.send(self.server.brainstorm.detail(q['id']))
+                if path=='/v2/brainstorm/catalog':return self.send(catalog(self.server.brainstorm,q.get('runtime','pi'),q.get('provider',''),q.get('model','')))
+                if path=='/v2/brainstorm/files':
+                    base=self.server.brainstorm.path(q['id'])
+                    return self.send([{'id':str(p.relative_to(base)),'name':p.name,'path':str(p),'size':p.stat().st_size} for p in sorted(base.rglob('*')) if p.is_file() and not p.is_symlink()][:1000])
+                if path=='/v2/graph':return self.send(authoring.graph(w))
+                if path=='/v2/journal':return self.send(authoring.journals(w,q['owner_id']))
+                if path=='/v2/markdown':return self.send(authoring.markdown(w,q['id']))
                 if path=='/v2/settings':return self.send({'auto_index':w.setting('auto_index',False)})
                 if path=='/v2/state':return self.send(w.state())
                 if path=='/v2/search':return self.send(lib.store.search(q.get('q',''),q.get('project','')))
-                if path=='/v2/documents':return self.send(w.browse(q.get('kind',''),q.get('q',''),q.get('project',''),q.get('limit',100),q.get('sort','name_asc')))
+                if path=='/v2/documents':return self.send(w.browse(q.get('kind',''),q.get('q',''),q.get('project',''),q.get('limit',100),q.get('sort','name_asc'),q.get('category','')))
                 if path=='/v2/document':
                     d=w.document(q['id']);p=w.allowed_path(d['path'])
                     if d['kind'] in ('repo_catalog','data_catalog'):
                         if not d['available'] or not p.is_dir():raise ValueError('Folder is offline')
-                        return self.send(dict(d,body=catalog_text(d['body']),current_hash='',catalog_only=True))
+                        authoring.sync(w,d['id']);d=w.document(d['id'])
+                        return self.send(dict(d,body=catalog_text(d['body']),current_hash=d['hash'],catalog_only=True))
                     if not d['available'] or not p.is_file():raise ValueError(d.get('error') or 'Source file is offline or changed')
                     d['current_hash']=digest(p) if d['kind']!='data' else ''
                     if d['kind']=='pdf' and d['current_hash']!=d['hash']:raise ValueError('PDF content changed. Refresh the library and open the new version.')
@@ -81,6 +103,16 @@ class Handler(LegacyHandler):
                 if path=='/v2/export':return self.send({'version':2,'state':w.state(),'messages':w.rows('SELECT * FROM messages'),'paper_sessions':w.rows('SELECT * FROM session_papers'),'audit':w.rows('SELECT * FROM audit')})
             if self.command=='POST':
                 d=self.body()
+                if path=='/v2/brainstorm/create':return self.send(self.server.brainstorm.create(d))
+                if path=='/v2/brainstorm/start':return self.send(self.server.brainstorm.start(d['id']))
+                if path=='/v2/brainstorm/control':return self.send(self.server.brainstorm.control(d['id'],d['action'],d.get('text',''),d.get('calls',0),d.get('minutes',0),d.get('target',''),d.get('participation',''),d.get('work_mode'),d.get('member_id',''),d.get('effort',''),d.get('runs',0)))
+                if path=='/v2/brainstorm/save-note':
+                    room=self.server.brainstorm.room(d['id'])
+                    existing=w.one("SELECT id FROM objects WHERE kind='note' AND json_extract(data,'$.source')=?",('brainstorm:'+room['id'],))
+                    old=w.object(existing['id']) if existing else {}
+                    note=w.put({**old,'kind':'note','title':'Brainstorm: '+room['topic'][:200],'body':self.server.brainstorm.report(room['id']),'project_id':room['project_id'],'data':{'source':'brainstorm:'+room['id'],'idea_id':room.get('idea_id','')}},id=existing['id'] if existing else None)
+                    return self.send(note)
+                if path=='/v2/markdown':return self.send(authoring.save_markdown(w,d['id'],d['text'],d['hash']))
                 if path=='/v2/record':return self.send(w.put(d.get('record',d),id=d.get('id')))
                 if path=='/v2/delete':w.delete(d['id'],d['revision']);return self.send({'ok':True})
                 if path=='/v2/link':return self.send(w.link(**d))
@@ -90,7 +122,7 @@ class Handler(LegacyHandler):
                 if path=='/v2/cancel-job':return self.send(lib.cancel(d['id']))
                 if path=='/v2/scan':return self.send(lib.start(d['id'],d.get('organize',False)))
                 if path=='/v2/session':return self.send(w.session(d.get('title','New discussion'),d.get('project_id',''),d.get('model','')))
-                if path=='/v2/turn':return self.send(agent.turn(d['session_id'],d['text'],d.get('documents'),d.get('model',''),d.get('memory',True),d.get('execution',False),d.get('effort',''),d.get('web_search',True)))
+                if path=='/v2/turn':return self.send(agent.turn(d['session_id'],d['text'],d.get('documents'),d.get('model',''),d.get('memory',True),d.get('execution',False),d.get('effort',''),d.get('web_search',True),d.get('images')))
                 if path=='/v2/delete-session':return self.send(w.delete_session(d['id']))
                 if path=='/v2/restore-session':return self.send(w.restore_session(d['id']))
                 if path=='/v2/stop':return self.send(agent.stop(d['session_id']))
@@ -146,7 +178,7 @@ class Handler(LegacyHandler):
 
 def main():
     p=argparse.ArgumentParser();p.add_argument('--data-dir',default=str(Path.home()/'Library/Application Support/Research OS 2'));p.add_argument('--port',type=int,default=0);p.add_argument('--ready');args=p.parse_args()
-    server=Server(args.data_dir,args.port)
+    server=Server(args.data_dir,args.port,bootstrap_enabled=not bool(os.environ.get('RESEARCHOS_ISOLATED')))
     if args.ready:
         path=Path(args.ready);path.write_text(encode({'url':server.origin,'token':server.token,'pid':os.getpid()}));path.chmod(0o600)
     print(server.origin,flush=True)

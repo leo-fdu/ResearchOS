@@ -80,17 +80,18 @@ struct RelationComposer: View {
   @Environment(\.dismiss) private var dismiss
   @State private var query = ""
   @State private var relation = "related"
+  @State private var candidates: [Row] = []
   var body: some View {
     VStack(alignment: .leading, spacing: 16) {
       HStack { Text("Link to“\(source.title)”").font(.title3); Spacer(); Button("Done") { dismiss() } }
-      TextField("Filter projects, plans, resources or folders", text: $query).textFieldStyle(.roundedBorder)
+      TextField("Find projects, ideas, discussions or resources", text: $query).textFieldStyle(.roundedBorder)
       Picker("Relationship", selection: $relation) {
         Text("Related resources").tag("related"); Text("Supporting evidence").tag("supports")
         Text("Contradicting evidence").tag("contradicts"); Text("Depends on").tag("depends_on")
       }
       ScrollView {
         LazyVStack(alignment: .leading, spacing: 12) {
-          ForEach((model.objects + model.roots + model.documents).filter {
+          ForEach(candidates.filter {
             $0.id != source.id && (query.isEmpty || $0.title.localizedCaseInsensitiveContains(query))
           }.prefix(100)) { target in
             HStack {
@@ -104,8 +105,12 @@ struct RelationComposer: View {
           }
         }
       }
-      Text("Linked folders are included in project search. Filter to find a resource.").font(.caption).foregroundStyle(.secondary)
+      Text("Every research resource can be linked. Search by title to find a target.").font(.caption).foregroundStyle(.secondary)
     }.padding(24).frame(width: 660, height: 520)
+      .task {
+        do { let graph = try await model.request("/v2/graph") as? [String: Any] ?? [:]; candidates = model.rows(graph["nodes"]) }
+        catch { model.error = error.localizedDescription }
+      }
   }
 }
 

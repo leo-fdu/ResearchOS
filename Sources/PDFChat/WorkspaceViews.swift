@@ -39,7 +39,7 @@ struct WorkspaceView: View {
             Divider()
             center.frame(maxWidth: .infinity, maxHeight: .infinity)
           }.frame(minWidth: 460)
-          if model.showAssistant {
+          if model.showAssistant && model.selectedSection != "brainstorm" && (model.selectedSection != "graph" || model.selected != nil) {
             ResearchAssistant(model: model).frame(minWidth: 355, idealWidth: 425, maxWidth: 700)
           }
         }
@@ -101,12 +101,13 @@ struct WorkspaceView: View {
       VStack(alignment: .leading, spacing: 5) {
         nav("search", "Search", "magnifyingglass")
         nav("home", "Projects and ideas", "square.grid.2x2")
+        nav("brainstorm", "Brainstorm", "bubble.left.and.bubble.right")
+        nav("graph", "Graph", "point.3.connected.trianglepath.dotted")
         Text("RESOURCES").font(.system(size: 10, weight: .semibold)).tracking(1).foregroundStyle(.secondary).padding(.top, 20).padding(.bottom, 4).padding(.leading, 10)
         nav("papers", "Papers", "books.vertical")
         nav("note", "Notes", "note.text")
         nav("repo", "Repositories", "chevron.left.forwardslash.chevron.right")
         nav("data", "Datasets", "externaldrive")
-        nav("memory", "Memory", "brain")
       }.padding(.horizontal, 10)
       DiscussionHistory(model: model).padding(.top, 22)
       Divider().padding(.horizontal, 16)
@@ -158,14 +159,14 @@ struct WorkspaceView: View {
           Text($0.title).tag($0.id)
         }
       }.labelsHidden().frame(maxWidth: 190).help("Filter resources and set the project for new discussions")
-      if !model.showAssistant {
+      if !model.showAssistant && model.selectedSection != "brainstorm" && (model.selectedSection != "graph" || model.selected != nil) {
         Button { model.showAssistant = true } label: { Image(systemName: "sidebar.right") }.help("Show research assistant")
       }
     }.padding(.horizontal, 20).padding(.vertical, 12)
   }
   private var sectionTitle: String {
     [
-      "home": "Projects and ideas", "search": "Search", "project": "Project", "idea": "Ideas", "plan": "Plans and tasks",
+      "home": "Projects and ideas", "brainstorm": "Brainstorm", "graph": "Research graph", "search": "Search", "project": "Project", "idea": "Ideas", "plan": "Plans and tasks",
       "papers": "Papers", "note": "Notes", "repo": "Repositories", "experiments": "Experiments and results", "memory": "Memory",
       "settings": "Connections and settings", "data": "Datasets",
     ][model.selectedSection] ?? "Research OS"
@@ -192,6 +193,8 @@ struct WorkspaceView: View {
   @ViewBuilder private func sectionPane(_ section: String) -> some View {
       switch section {
       case "home": HomePane(model: model)
+      case "brainstorm": BrainstormPane(workspace: model)
+      case "graph": ResearchGraph(model: model)
       case "search": SearchPane(model: model)
       case "papers", "repo", "data": LibraryPane(model: model, kind: section)
       case "note": LibraryPane(model: model, kind: "notes")
@@ -281,7 +284,7 @@ struct DiscussionHistory: View {
               HStack(spacing: 8) {
                 Button { Task { await model.openSession(session.id) } } label: {
                   VStack(alignment: .leading, spacing: 5) {
-                    Text(session.title).font(.system(size: 12, weight: model.sessionID == session.id ? .semibold : .regular)).lineLimit(2)
+                    Text(researchMessageText(session.title).isEmpty ? "Research discussion" : researchMessageText(session.title)).font(.system(size: 12, weight: model.sessionID == session.id ? .semibold : .regular)).lineLimit(2)
                     Text(session.string("status") == "running" ? "Working…" : workspaceDate(session.string("updated_at"))).font(.system(size: 10)).foregroundStyle(.secondary)
                   }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
                 }.buttonStyle(.plain)
@@ -464,6 +467,7 @@ struct LibraryPane: View {
   let kind: String
   @State private var filter = ""
   @State private var sort = "modified_desc"
+  @State private var category = ""
   @State private var files: [Row] = []
   @State private var total = 0
   @State private var limit = 100
@@ -473,9 +477,9 @@ struct LibraryPane: View {
   private func organize(_ root: Row) {
     Task { await model.perform("/v2/scan", ["id": root.id, "organize": true], success: "Paper organization queued") }
   }
-  private var searchKey: String { kind + "|" + filter + "|" + model.project + "|" + String(limit) + "|" + sort }
+  private var searchKey: String { kind + "|" + category + "|" + filter + "|" + model.project + "|" + String(limit) + "|" + sort }
   private var localNotes: [Row] {
-    model.objects.filter { $0.string("kind") == "note" && (model.project.isEmpty || $0.string("project_id") == model.project) && (filter.isEmpty || ($0.title + $0.string("body")).localizedCaseInsensitiveContains(filter)) }
+    model.objects.filter { $0.string("kind") == "note" && $0.data["entry_type"] as? String != "experiment_log" && (category.isEmpty || ($0.data["category"] as? String ?? "other") == category) && (model.project.isEmpty || $0.string("project_id") == model.project) && (filter.isEmpty || ($0.title + $0.string("body")).localizedCaseInsensitiveContains(filter)) }
   }
   private func load() async {
     let key = searchKey
@@ -484,7 +488,7 @@ struct LibraryPane: View {
       try Task.checkCancellation()
       loading = true
       var components = URLComponents()
-      components.queryItems = [URLQueryItem(name: "kind", value: kind), URLQueryItem(name: "q", value: filter), URLQueryItem(name: "project", value: model.project), URLQueryItem(name: "limit", value: String(limit)), URLQueryItem(name: "sort", value: sort)]
+      components.queryItems = [URLQueryItem(name: "kind", value: kind), URLQueryItem(name: "q", value: filter), URLQueryItem(name: "project", value: model.project), URLQueryItem(name: "limit", value: String(limit)), URLQueryItem(name: "sort", value: sort), URLQueryItem(name: "category", value: category)]
       let result = try await model.request("/v2/documents" + (components.string ?? "")) as? [String: Any] ?? [:]
       guard key == searchKey else { return }
       files = model.rows(result["documents"]); total = result["total"] as? Int ?? 0
@@ -522,8 +526,11 @@ struct LibraryPane: View {
           if kind == "notes" { Button("New workspace note") { model.compose("note") } }
         } label: { Image(systemName: "plus") }.menuStyle(.borderlessButton).fixedSize().help("Add resources")
       }.padding(20).padding(.bottom, -6)
+      if kind == "notes" {
+        Picker("Folder", selection: $category) { Text("All").tag(""); Text("blog").tag("blog"); Text("concepts").tag("concepts"); Text("paper").tag("paper"); Text("Other").tag("other") }.pickerStyle(.segmented).padding(.horizontal, 20).padding(.bottom, 10)
+      }
       HStack {
-        Text("\(total) resources").font(.caption).foregroundStyle(.secondary)
+        Text("\(total + (kind == "notes" ? localNotes.count : 0)) resources").font(.caption).foregroundStyle(.secondary)
         Spacer()
         Text(["name_asc":"Name A–Z", "name_desc":"Name Z–A", "modified_desc":"Newest first", "modified_asc":"Oldest first"][sort] ?? "").font(.caption).foregroundStyle(.secondary)
         if loading { ProgressView().controlSize(.small) }
@@ -531,7 +538,7 @@ struct LibraryPane: View {
       ScrollView {
         LazyVStack(alignment: .leading, spacing: 10) {
           if kind == "notes" && !localNotes.isEmpty {
-            Text("Workspace notes").font(.headline)
+            Text("Notes").font(.headline)
             ForEach(localNotes) { row in Button { model.selected = row } label: { ResearchCard(row: row) }.buttonStyle(.plain) }
             Text("Connected files").font(.headline).padding(.top, 10)
           }

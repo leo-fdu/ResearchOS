@@ -46,6 +46,9 @@ class Workspace:
             db.execute("UPDATE jobs SET status='interrupted',detail='Task interrupted when the app quit. Run it again to continue.',updated_at=? WHERE status IN ('running','queued')",(stamp(),))
             db.execute("UPDATE sessions SET status='interrupted' WHERE status='running'")
             db.execute("UPDATE messages SET status='interrupted' WHERE status='streaming'")
+        from . import authoring
+        authoring.init(self)
+        self.hide_note_metadata()
         self.migrate_research_statuses()
         self.migrate_paper_sessions()
         self.snapshot_widget()
@@ -67,6 +70,13 @@ class Workspace:
         r=self.one('SELECT * FROM objects WHERE id=?',(id,))
         if r:r['data']=json.loads(r['data'])
         return r
+    def hide_note_metadata(self):
+        hidden=[r['id'] for r in self.rows("SELECT d.id,d.path FROM documents d JOIN roots r ON r.id=d.root_id WHERE r.kind='notes'") if Path(r['path']).name.upper() in ('AGENTS.MD','INDEX.MD')]
+        with self.db() as db:
+            for ident in hidden:
+                db.execute('UPDATE documents SET available=0 WHERE id=?',(ident,))
+                db.execute('DELETE FROM search_index WHERE id=?',(ident,))
+
     def setting(self,key,default=None):
         r=self.one('SELECT value FROM settings WHERE key=?',(key,));return json.loads(r['value']) if r else default
     def retire_file_catalogs(self):
@@ -100,6 +110,8 @@ class Workspace:
             self.put(current,source='migration:five-research-statuses',id=record['id'])
 
     def put(self,d,source='user',id=None):
+        from . import authoring
+        if id:authoring.sync(self,id)
         with self.lock, self.db() as db:
             db.execute('BEGIN IMMEDIATE')
             old=self.object(id) if id else None
@@ -114,6 +126,7 @@ class Workspace:
                 value['status']=status
             body=value.get('body','');data=value.get('data',{})
             if not isinstance(body,str) or len(body)>500_000 or not isinstance(data,dict):raise ValueError('Invalid or oversized record content')
+            data=authoring.validate_record(self,value,source)
             project=value.get('project_id') or ''
             if project and (not self.object(project) or self.object(project)['kind']!='project'):raise ValueError('Linked project not found')
             parent=data.get('parent_id')
@@ -127,10 +140,12 @@ class Workspace:
                 if db.execute('SELECT 1 FROM forgotten WHERE fingerprint=?',(fp,)).fetchone():raise ValueError('This content was forgotten and cannot be added again automatically.')
                 data['fingerprint']=fp
             ident=id or uid();now=stamp();revision=(old['revision']+1) if old else 1
+            data=authoring.attach_files(self,ident,data)
             row=(ident,kind,title,body,project,value.get('status','active'),encode(data),revision,old['created_at'] if old else now,now)
             db.execute('INSERT OR REPLACE INTO objects VALUES(?,?,?,?,?,?,?,?,?,?)',row)
             db.execute('INSERT INTO audit(object_id,action,before,after,source,at) VALUES(?,?,?,?,?,?)',(ident,'update' if old else 'create',encode(old),encode(dict(zip(['id','kind','title','body','project_id','status','data','revision','created_at','updated_at'],row))),source,now))
             db.execute('DELETE FROM search_index WHERE id=?',(ident,));db.execute('INSERT INTO search_index VALUES(?,?,?)',(ident,title,body))
+            authoring.push_object(self,dict(id=ident,kind=kind,title=title,body=body,data=data),db)
         self.snapshot_widget();return self.object(ident)
     def delete(self,id,revision):
         with self.lock:
@@ -141,6 +156,7 @@ class Workspace:
             db.execute('BEGIN IMMEDIATE');old=self.object(id)
             if not old or old['revision']!=revision:raise Conflict('Record changed')
             if db.execute('SELECT 1 FROM objects WHERE project_id=? LIMIT 1',(id,)).fetchone():raise ValueError('This project has linked records. Archive it instead.')
+            if db.execute("SELECT 1 FROM objects WHERE json_extract(data,'$.owner_id')=? LIMIT 1",(id,)).fetchone():raise ValueError('This resource has experiment logs. Archive it instead.')
             if old['kind']=='memory':
                 db.execute('INSERT OR REPLACE INTO forgotten VALUES(?,?)',(old['data'].get('fingerprint',''),stamp()))
                 origin=old['data'].get('source','')
@@ -203,17 +219,22 @@ class Workspace:
         return out
     def link(self,source,target,relation='related',detail=''):
         for id in (source,target):
-            if not self.object(id) and not self.one('SELECT id FROM documents WHERE id=?',(id,)) and not self.one('SELECT id FROM roots WHERE id=? AND enabled=1',(id,)):raise ValueError('Linked record not found')
+            room=self.one('SELECT payload FROM brainstorm_rooms WHERE id=?',(id,)) if self.one("SELECT name FROM sqlite_master WHERE name='brainstorm_rooms'") else None
+            active_room=room and not json.loads(room['payload']).get('deleted_at')
+            if not active_room and not self.object(id) and not self.one('SELECT id FROM documents WHERE id=? AND available=1',(id,)) and not self.one('SELECT id FROM roots WHERE id=? AND enabled=1',(id,)):raise ValueError('Linked record not found')
         with self.db() as db:db.execute('INSERT OR IGNORE INTO edges VALUES(?,?,?,?,?)',(uid(),source,target,relation,detail))
         return {'linked':True}
-    def state(self):
+    def state(self,sync_files=True):
+        if sync_files:
+            from .authoring import sync
+            sync(self)
         objects=self.rows('SELECT * FROM objects ORDER BY updated_at DESC')
         jobs=self.rows('SELECT * FROM jobs ORDER BY created_at DESC LIMIT 30')
         for job in jobs:
             job['kind']=system_text(job['kind']);job['detail']=system_text(job['detail'])
         for o in objects:o['data']=json.loads(o['data'])
-        return dict(objects=objects,roots=self.rows('SELECT * FROM roots WHERE enabled=1'),documents=self.rows("SELECT id,root_id,path,title,kind,pages,available,error FROM documents ORDER BY CASE kind WHEN 'pdf' THEN 0 WHEN 'notes' THEN 1 ELSE 2 END,title LIMIT 10000"),sessions=self.rows('SELECT * FROM sessions WHERE id NOT IN (SELECT id FROM deleted_sessions) ORDER BY updated_at DESC'),jobs=jobs,edges=self.rows('SELECT * FROM edges'),counts=self.one('SELECT count(*) total,sum(available) available FROM documents'))
-    def browse(self,kind,query='',project='',limit=100,sort='name_asc'):
+        return dict(objects=objects,roots=self.rows('SELECT * FROM roots WHERE enabled=1'),documents=self.rows("SELECT id,root_id,path,title,kind,pages,available,error,hash,mtime FROM documents ORDER BY CASE kind WHEN 'pdf' THEN 0 WHEN 'notes' THEN 1 ELSE 2 END,title LIMIT 10000"),sessions=self.rows('SELECT * FROM sessions WHERE id NOT IN (SELECT id FROM deleted_sessions) ORDER BY updated_at DESC'),jobs=jobs,edges=self.rows('SELECT * FROM edges'),counts=self.one('SELECT count(*) total,sum(available) available FROM documents'))
+    def browse(self,kind,query='',project='',limit=100,sort='name_asc',category=''):
         limit=max(1,min(2000,int(limit)));args=[]
         where=['d.available=1','r.enabled=1']
         if kind=='papers':where.append("d.kind='pdf'")
@@ -224,6 +245,13 @@ class Workspace:
         clause=' AND '.join(where)
         count=self.one('SELECT count(*) total FROM documents d JOIN roots r ON r.id=d.root_id WHERE '+clause,args)['total']
         records=self.rows("SELECT d.id,d.root_id,d.path,d.title,d.kind,d.pages,d.available,d.error,d.mtime,COALESCE(s.summary,'') summary FROM documents d JOIN roots r ON r.id=d.root_id LEFT JOIN resource_summaries s ON s.id=d.id WHERE "+clause,args)
+        if kind=='notes':
+            roots={r['id']:Path(r['path']) for r in self.rows("SELECT id,path FROM roots WHERE kind='notes'")}
+            for row in records:
+                parts=Path(row['path']).relative_to(roots[row['root_id']]).parts
+                row['category']=parts[0] if len(parts)>1 else 'other'
+            if category:records=[r for r in records if r['category']==category]
+            count=len(records)
         # Only stat known entries; do not enumerate any directory contents.
         for row in records:
             try:row['modified_ns']=Path(row['path']).stat().st_mtime_ns
@@ -292,6 +320,7 @@ class Workspace:
         for id in metadata.get('documents',[]):
             d=self.one('SELECT id FROM documents WHERE id=? AND available=1',(id,))
             if d:out.append(d['id'])
+            elif self.object(id):out.append(id)
         versions=metadata.get('paper_versions',[])
         if metadata.get('pdf_hash'):versions=versions+[{'hash':metadata['pdf_hash']}]
         for paper in versions:
@@ -349,6 +378,9 @@ class Workspace:
             db.execute('CREATE TABLE IF NOT EXISTS resource_summaries(id TEXT PRIMARY KEY,summary TEXT,source TEXT,readme TEXT,updated_at TEXT)')
             db.execute('UPDATE objects SET revision=revision+?',(int(datetime.now().timestamp()*1000),))
             db.execute("UPDATE sessions SET status='interrupted' WHERE status='running'")
+        from .authoring import restore_objects
+        restore_objects(self)
+        self.hide_note_metadata()
         self.migrate_research_statuses()
         self.migrate_paper_sessions()
         self.snapshot_widget()

@@ -121,10 +121,14 @@ final class PDFContextStore: ObservableObject {
     var hasSelection: Bool { quote != nil }
     var contextLabel: String { mode.label }
     private var restoredPosition = false
+    private var followsWidth = true
+    private var lastFittedWidth: CGFloat = 0
+    private var restoring = false
     private var results: [PDFSelection] = []
     private var resultIndex = 0
 
     func load(document: PDFDocument, url: URL?) {
+        restoredPosition = false; followsWidth = true; lastFittedWidth = 0; identity = nil
         self.document = document; pdfURL = url
         reader = PDFDocumentReader(url: url, data: url == nil ? document.dataRepresentation() : nil)
     }
@@ -133,12 +137,18 @@ final class PDFContextStore: ObservableObject {
         restorePositionIfReady()
     }
     func restorePositionIfReady() {
-        guard !restoredPosition, let id = identity, let view = pdfView, view.bounds.width > 200, view.window != nil else { return }
+        guard !restoring, let id = identity, let view = pdfView, view.bounds.width > 200,
+              view.bounds.height > 100, view.window != nil, view.document === document else { return }
+        if restoredPosition {
+            if followsWidth && abs(view.bounds.width - lastFittedWidth) > 1 { fitWidth() }
+            return
+        }
+        restoring = true
+        defer { restoring = false }
         let savedPage = UserDefaults.standard.integer(forKey: "reading.page.\(id)")
-        let scale = UserDefaults.standard.double(forKey: "reading.zoom.\(id)")
         view.autoScales = false
-        if scale > 0 { view.scaleFactor = scale; zoom = scale } else { fitWidth() }
         goToPage(savedPage > 0 ? savedPage : 1)
+        fitWidth()
         restoredPosition = true
         recordPosition()
     }
@@ -162,13 +172,19 @@ final class PDFContextStore: ObservableObject {
         currentPage = document.index(for: target) + 1
     }
     func fitWidth() {
-        guard let view = pdfView, let page = view.currentPage else { return }
+        guard let view = pdfView, view.bounds.width > 200,
+              let page = view.currentPage ?? document?.page(at: 0) else { return }
+        followsWidth = true
+        lastFittedWidth = view.bounds.width
         view.autoScales = false
-        view.scaleFactor = max(0.25, (view.bounds.width - 32) / page.bounds(for: .cropBox).width)
+        let bounds = page.bounds(for: .cropBox)
+        let width = page.rotation % 180 == 0 ? bounds.width : bounds.height
+        view.scaleFactor = max(0.25, min(5, (view.bounds.width - 32) / max(1, width)))
         recordPosition()
     }
     func scale(_ factor: CGFloat) {
         guard let view = pdfView else { return }
+        followsWidth = false
         view.autoScales = false
         view.scaleFactor = max(0.25, min(5, view.scaleFactor * factor)); recordPosition()
     }
